@@ -138,15 +138,51 @@ const App = (() => {
     const cfg     = Store.config.get();
     const profile = Store.profile.get();
 
-    document.getElementById('settings-gemini-key').value  = cfg.geminiKey || '';
-    document.getElementById('settings-name').value        = profile.name || '';
-    document.getElementById('settings-salary').value      = profile.salary || '';
-    document.getElementById('settings-fgts').value        = profile.fgts || '';
-    document.getElementById('settings-car-value').value   = profile.carValue || '';
-    document.getElementById('settings-theme').value       = state.theme;
+    document.getElementById('settings-gemini-key').value    = cfg.geminiKey || '';
+    document.getElementById('settings-name').value          = profile.name || '';
+    document.getElementById('settings-salary').value        = profile.salary || '';
+    document.getElementById('settings-savings-goal').value  = profile.savingsGoal || '';
+    document.getElementById('settings-target-years').value  = profile.targetYears || '';
+    document.getElementById('settings-fgts').value          = profile.fgts || '';
+    document.getElementById('settings-car-value').value     = profile.carValue || '';
+    document.getElementById('settings-theme').value         = state.theme;
+
+    // Backup account
+    const acctName = Store.backup.getActiveAccount();
+    document.getElementById('settings-backup-account').value = acctName || '';
+    updateLastSyncDisplay();
+
+    // Folder support indicator
+    const folderBtn = document.getElementById('settings-folder-btn');
+    if (!('showDirectoryPicker' in window)) {
+      folderBtn.disabled = true;
+      folderBtn.title = 'Not supported on this browser';
+    }
+
+    // Share support
+    const shareBtn = document.getElementById('settings-share-btn');
+    if (!navigator.canShare) {
+      shareBtn.disabled = true;
+      shareBtn.title = 'Not supported on this browser';
+    }
 
     document.getElementById('app-version').textContent = `Matt Money ${VERSION}`;
     document.getElementById('settings-modal').classList.remove('hidden');
+  }
+
+  async function updateLastSyncDisplay() {
+    const el = document.getElementById('settings-last-sync');
+    const acct = Store.backup.getActiveAccount();
+    if (!acct) { el.textContent = ''; return; }
+    try {
+      const list = await Store.backup.list(acct);
+      if (list.length > 0) {
+        const last = list[0];
+        el.textContent = `Last sync: ${Fmt.dateShort(last.date.slice(0,10))} at ${last.date.slice(11,16)} (${list.length} backups)`;
+      } else {
+        el.textContent = 'No backups yet — hit Sync Now';
+      }
+    } catch { el.textContent = ''; }
   }
 
   function closeSettings() {
@@ -160,11 +196,17 @@ const App = (() => {
     Store.config.set({ geminiKey: geminiKey || '' });
 
     Store.profile.set({
-      name:      document.getElementById('settings-name').value.trim() || 'Matthew',
-      salary:    Number(document.getElementById('settings-salary').value) || 7500,
-      fgts:      Number(document.getElementById('settings-fgts').value) || 68000,
-      carValue:  Number(document.getElementById('settings-car-value').value) || 50000
+      name:        document.getElementById('settings-name').value.trim() || 'Matthew',
+      salary:      Number(document.getElementById('settings-salary').value) || 7500,
+      savingsGoal: Number(document.getElementById('settings-savings-goal').value) || 500000,
+      targetYears: Number(document.getElementById('settings-target-years').value) || 15,
+      fgts:        Number(document.getElementById('settings-fgts').value) || 68000,
+      carValue:    Number(document.getElementById('settings-car-value').value) || 50000
     });
+
+    // Save backup account name
+    const backupAcct = document.getElementById('settings-backup-account').value.trim();
+    if (backupAcct) Store.backup.setActiveAccount(backupAcct);
 
     setTheme(theme);
     Store.cache.invalidateAll();
@@ -342,6 +384,88 @@ const App = (() => {
     }
   }
 
+  // ── Backup History ───────────────────────────────────────
+  async function openBackupHistory() {
+    const modal = document.getElementById('backup-history-modal');
+    const content = document.getElementById('backup-history-content');
+    content.innerHTML = '<div class="skeleton" style="height:100px"></div>';
+    modal.classList.remove('hidden');
+
+    try {
+      const accounts = await Store.backup.getAccounts();
+      if (accounts.length === 0) {
+        content.innerHTML = '<div class="empty-state" style="padding:var(--space-xl) 0"><p>No backups yet. Use Sync Now to create your first backup.</p></div>';
+        return;
+      }
+
+      let html = '';
+      for (const acct of accounts) {
+        const snapshots = await Store.backup.list(acct);
+        html += `
+          <div style="margin-bottom:var(--space-lg)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-sm)">
+              <h3 style="font-size:14px;font-weight:600;margin:0">${esc(acct)}</h3>
+              <span class="pill" style="font-size:11px">${snapshots.length} backup${snapshots.length !== 1 ? 's' : ''}</span>
+            </div>
+            ${snapshots.map(s => {
+              const txCount = s.data?.transactions?.length || 0;
+              const acctCount = s.data?.accounts?.length || 0;
+              return `
+                <div class="tx-item" style="margin-bottom:4px">
+                  <div class="tx-info">
+                    <div class="tx-name">${Fmt.dateShort(s.dateKey)}</div>
+                    <div class="tx-meta">${s.date.slice(11,16)} · ${txCount} tx · ${acctCount} accounts</div>
+                  </div>
+                  <div style="display:flex;gap:4px">
+                    <button class="btn btn-ghost btn-sm" onclick="App.downloadBackup('${s.id}')" title="Download" style="padding:6px">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="App.restoreBackup('${s.id}')" title="Restore" style="padding:6px;color:var(--primary)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-sm" onclick="App.deleteBackup('${s.id}','${esc(acct)}')" title="Delete" style="padding:6px;color:var(--red)">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }
+      content.innerHTML = html;
+    } catch(e) {
+      content.innerHTML = `<p style="color:var(--red)">Error: ${esc(e.message)}</p>`;
+    }
+  }
+
+  async function downloadBackup(id) {
+    try {
+      const snapshot = await Store.backup.get(id);
+      if (snapshot) API.downloadSnapshot(snapshot);
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
+  async function restoreBackup(id) {
+    if (!confirm('This will replace all current data with this backup. Continue?')) return;
+    try {
+      await Store.backup.restore(id);
+      document.getElementById('backup-history-modal').classList.add('hidden');
+      closeSettings();
+      toast('Backup restored!', 'success');
+      renderView(state.activeView);
+    } catch(e) { toast('Restore failed: ' + e.message, 'error'); }
+  }
+
+  async function deleteBackup(id, acct) {
+    if (!confirm('Delete this backup?')) return;
+    try {
+      await Store.backup.remove(id);
+      toast('Backup deleted', 'success');
+      openBackupHistory(); // refresh
+    } catch(e) { toast(e.message, 'error'); }
+  }
+
   // ── Online / Offline handling ─────────────────────────────
   function handleOnline() {
     state.isOnline = true;
@@ -408,11 +532,47 @@ const App = (() => {
       showSetupWizard();
     });
 
-    // Export / Import
+    // ── Backup & Sync handlers ──────────────────────────────
+    // Sync Now
+    document.getElementById('settings-sync-btn').addEventListener('click', async () => {
+      const acctInput = document.getElementById('settings-backup-account');
+      const acct = acctInput.value.trim();
+      if (!acct) { toast('Enter a backup account name first', 'error'); acctInput.focus(); return; }
+      Store.backup.setActiveAccount(acct);
+      const btn = document.getElementById('settings-sync-btn');
+      btn.disabled = true; btn.textContent = 'Syncing...';
+      try {
+        const snapshot = await API.syncBackup(acct);
+        toast('Backup saved!', 'success');
+        updateLastSyncDisplay();
+      } catch(e) { toast('Sync failed: ' + e.message, 'error'); }
+      btn.disabled = false; btn.textContent = 'Sync Now';
+    });
+
+    // Download
     document.getElementById('settings-export-btn').addEventListener('click', () => {
       try { API.exportData(); toast('Backup downloaded', 'success'); }
       catch(e) { toast('Export failed: ' + e.message, 'error'); }
     });
+
+    // Share
+    document.getElementById('settings-share-btn').addEventListener('click', async () => {
+      try {
+        await API.shareBackup(null);
+        toast('Backup shared!', 'success');
+      } catch(e) { toast(e.message, 'error'); }
+    });
+
+    // Set Folder (File System Access API)
+    document.getElementById('settings-folder-btn').addEventListener('click', async () => {
+      try {
+        const folderName = await API.selectBackupFolder();
+        document.getElementById('settings-folder-name').textContent = `Folder: ${folderName}`;
+        toast('Backup folder selected!', 'success');
+      } catch(e) { toast(e.message, 'error'); }
+    });
+
+    // Import
     document.getElementById('settings-import-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -431,11 +591,26 @@ const App = (() => {
       e.target.value = '';
     });
 
+    // Backup History
+    document.getElementById('settings-backup-history-btn').addEventListener('click', openBackupHistory);
+
+    // Start Fresh
+    document.getElementById('settings-start-fresh-btn').addEventListener('click', () => {
+      if (!confirm('This will erase ALL data and restart the app. Your backup history will be preserved. Continue?')) return;
+      API.startFresh();
+      closeSettings();
+      showSetupWizard();
+      toast('Data cleared. Set up your new account.', 'info');
+    });
+
     // Modal close on overlay click
     document.getElementById('settings-modal').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) closeSettings();
     });
     document.getElementById('tx-detail-modal').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
+    });
+    document.getElementById('backup-history-modal').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
     });
 
@@ -493,6 +668,9 @@ const App = (() => {
     openSettings,
     showApp,
     showSetupWizard,
+    downloadBackup,
+    restoreBackup,
+    deleteBackup,
     setTheme,
     toggleTheme,
     CATEGORIES,
@@ -506,6 +684,7 @@ const App = (() => {
    ============================================================ */
 
 const SetupWizard = (() => {
+  const TOTAL_STEPS = 5;
   let currentStep = 1;
   let accounts = [];
   let cards = [];
@@ -529,14 +708,40 @@ const SetupWizard = (() => {
     document.getElementById('setup-name').value = profile.name || '';
     document.getElementById('setup-salary').value = profile.salary || '';
 
+    // Pre-fill goals & assets (step 2)
+    document.getElementById('setup-savings-goal').value = profile.savingsGoal || '';
+    document.getElementById('setup-target-years').value = profile.targetYears || '';
+    document.getElementById('setup-fgts').value = profile.fgts || '';
+    document.getElementById('setup-car-value').value = profile.carValue || '';
+
+    const patrimonio = Store.data.getPatrimonio();
+    document.getElementById('setup-savings').value = patrimonio.savings || '';
+    document.getElementById('setup-investments').value = patrimonio.investments || '';
+
+    // Setup import handler
+    document.getElementById('setup-import-file').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        await API.importData(file);
+        App.toast('Backup imported! Completing setup...', 'success');
+        Store.data.setSetupDone(true);
+        App.showApp();
+      } catch(err) {
+        App.toast('Import failed: ' + err.message, 'error');
+      }
+      e.target.value = '';
+    });
+
     renderAccounts();
     renderCards();
+    renderCategories();
     showStep(1);
   }
 
   function showStep(step) {
     currentStep = step;
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= TOTAL_STEPS; i++) {
       document.getElementById(`setup-step-${i}`).classList.toggle('hidden', i !== step);
       const dot = document.querySelector(`.setup-step-dot[data-step="${i}"]`);
       if (dot) {
@@ -553,14 +758,36 @@ const SetupWizard = (() => {
       Store.profile.set({ name: name || 'Matthew', salary: salary || 7500 });
     }
     if (fromStep === 2) {
+      // Save goals & assets
+      Store.profile.set({
+        savingsGoal: Number(document.getElementById('setup-savings-goal').value) || 500000,
+        targetYears: Number(document.getElementById('setup-target-years').value) || 15,
+        fgts:        Number(document.getElementById('setup-fgts').value) || 0,
+        carValue:    Number(document.getElementById('setup-car-value').value) || 0
+      });
+      // Save patrimonio
+      const pat = Store.data.getPatrimonio();
+      Store.data.setPatrimonio({
+        ...pat,
+        savings:     Number(document.getElementById('setup-savings').value) || 0,
+        investments: Number(document.getElementById('setup-investments').value) || 0,
+        fgts:        Number(document.getElementById('setup-fgts').value) || 0,
+        carValue:    Number(document.getElementById('setup-car-value').value) || 0
+      });
+    }
+    if (fromStep === 3) {
       saveAccountsFromDOM();
+    }
+    if (fromStep === 4) {
+      saveCardsFromDOM();
     }
     showStep(fromStep + 1);
   }
 
   function back(fromStep) {
-    if (fromStep === 3) saveCardsFromDOM();
-    if (fromStep === 2) saveAccountsFromDOM();
+    if (fromStep === 5) saveCategoriesFromDOM();
+    if (fromStep === 4) saveCardsFromDOM();
+    if (fromStep === 3) saveAccountsFromDOM();
     showStep(fromStep - 1);
   }
 
@@ -659,9 +886,39 @@ const SetupWizard = (() => {
     }));
   }
 
+  // ── Categories / Budgets management ────────────────────────
+  function renderCategories() {
+    const el = document.getElementById('setup-categories-list');
+    if (!el) return;
+    const categories = Store.data.getCategories();
+    el.innerHTML = categories.map(c => `
+      <div class="setup-cat-row" data-id="${c.id}" style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:var(--space-sm);padding:var(--space-sm);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md)">
+        <span style="font-size:18px;width:28px;text-align:center">${c.emoji}</span>
+        <span style="flex:1;font-size:13px;font-weight:500">${c.label}</span>
+        <div style="position:relative;width:120px">
+          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">R$</span>
+          <input type="number" class="form-input setup-cat-budget" value="${c.budget || ''}" placeholder="0" inputmode="decimal" style="padding-left:28px;font-size:13px;height:36px" />
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function saveCategoriesFromDOM() {
+    const rows = document.querySelectorAll('.setup-cat-row');
+    if (!rows.length) return;
+    const categories = Store.data.getCategories();
+    rows.forEach(row => {
+      const id = row.dataset.id;
+      const budget = parseFloat(row.querySelector('.setup-cat-budget').value) || 0;
+      const cat = categories.find(c => c.id === id);
+      if (cat) cat.budget = budget;
+    });
+    Store.data.setCategories(categories);
+  }
+
   // ── Finish ─────────────────────────────────────────────────
   async function finish() {
-    saveCardsFromDOM();
+    saveCategoriesFromDOM();
 
     // Save valid accounts
     const validAccounts = accounts.filter(a => a.name);

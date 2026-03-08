@@ -344,6 +344,100 @@ Critical extraction rules:
     });
   }
 
+  // ── Backup & Sync ──────────────────────────────────────────
+
+  // Sync: save snapshot + optionally write to file system folder
+  async function syncBackup(accountName) {
+    if (!accountName) throw new Error('Account name required');
+    const snapshot = await Store.backup.save(accountName);
+    // Auto-cleanup old backups (keep 30 days)
+    await Store.backup.cleanup(accountName, 30);
+
+    // Try to write to File System Access folder if we have a handle
+    await writeToFolder(accountName, snapshot);
+
+    return snapshot;
+  }
+
+  // Write a snapshot to the selected folder via File System Access API
+  async function writeToFolder(accountName, snapshot) {
+    if (!('showDirectoryPicker' in window)) return false;
+    let dirHandle;
+    try {
+      dirHandle = await Store.backup.getDirectoryHandle();
+    } catch { return false; }
+    if (!dirHandle) return false;
+
+    try {
+      // Verify we still have permission
+      const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        const req = await dirHandle.requestPermission({ mode: 'readwrite' });
+        if (req !== 'granted') return false;
+      }
+
+      // Create account subfolder
+      const acctDir = await dirHandle.getDirectoryHandle(accountName, { create: true });
+      // Write backup file
+      const fileName = `backup-${snapshot.dateKey}.json`;
+      const fileHandle = await acctDir.getFileHandle(fileName, { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(JSON.stringify(snapshot.data, null, 2));
+      await writable.close();
+      return true;
+    } catch (e) {
+      console.warn('Failed to write to folder:', e);
+      return false;
+    }
+  }
+
+  // Select a folder for auto-saving backups (File System Access API)
+  async function selectBackupFolder() {
+    if (!('showDirectoryPicker' in window)) {
+      throw new Error('Folder selection is not supported on this browser. Use Download or Share instead.');
+    }
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    await Store.backup.setDirectoryHandle(handle);
+    return handle.name;
+  }
+
+  // Share a backup file (mobile-friendly)
+  async function shareBackup(snapshotOrNull) {
+    const blob = snapshotOrNull?.data || Store.data.exportAll();
+    const json = JSON.stringify(blob, null, 2);
+    const file = new File([json], `matt-money-backup-${new Date().toISOString().slice(0,10)}.json`, { type: 'application/json' });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        title: 'Matt Money Backup',
+        text: 'Financial data backup',
+        files: [file]
+      });
+      return true;
+    }
+    throw new Error('Sharing not supported on this browser. Use Download instead.');
+  }
+
+  // Download a specific snapshot
+  function downloadSnapshot(snapshot) {
+    const json  = JSON.stringify(snapshot.data, null, 2);
+    const bytes = new Blob([json], { type: 'application/json' });
+    const url   = URL.createObjectURL(bytes);
+    const a     = document.createElement('a');
+    a.href      = url;
+    a.download  = `${snapshot.account}-backup-${snapshot.dateKey}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Start fresh: clear all data but keep config
+  function startFresh() {
+    const cfg = Store.config.get();
+    Store.raw.clear();
+    Store.config.set(cfg);
+    Store.cache.invalidateAll();
+  }
+
   // ── Accounts ─────────────────────────────────────────────
 
   async function getAccounts() {
@@ -404,6 +498,7 @@ Critical extraction rules:
     getCreditCards, upsertCreditCard, deleteCreditCard,
     parseReceiptWithGemini,
     exportData, importData,
+    syncBackup, selectBackupFolder, shareBackup, downloadSnapshot, startFresh,
     flushQueue, initBackend
   };
 })();
