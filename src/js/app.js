@@ -296,6 +296,13 @@ const App = (() => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Service worker update detection — toast when new version available
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        toast('App updated! Pull down to refresh for the latest version.', 'info', 8000);
+      });
+    }
+
     // Navigate to saved or default view
     navigate(savedState.activeView || 'dashboard');
 

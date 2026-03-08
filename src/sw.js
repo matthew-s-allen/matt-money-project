@@ -1,7 +1,13 @@
 /* ============================================================
-   MATT MONEY — Service Worker (Offline Support)
+   MATT MONEY — Service Worker (Offline Support + Auto-Update)
+
+   When code is pushed to GitHub Pages, the service worker
+   detects the change on next open and notifies the user.
+   No manual action needed — just open the app.
    ============================================================ */
 
+// Bump this version when backend-incompatible changes are pushed.
+// Frontend-only changes are detected automatically via cache diff.
 const CACHE_NAME = 'matt-money-v1';
 const STATIC_ASSETS = [
   '/',
@@ -22,9 +28,11 @@ const STATIC_ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  // Skip waiting immediately so updates apply on next page open
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS.filter(url => !url.startsWith('https://fonts'))))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(STATIC_ASSETS.filter(url => !url.startsWith('https://fonts'))))
   );
 });
 

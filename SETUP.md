@@ -1,209 +1,148 @@
 # Matt Money — Setup Guide
-
-> **Zero extra cost.** This runs entirely on your existing Google account + Gemini Pro subscription.
-> No servers, no hosting fees, no subscriptions beyond what you already pay.
+### Everything done on your phone. ~10 minutes.
 
 ---
 
-## What you'll have when done
+## Before you start, you need:
+- Your Google account (you already have this)
+- Chrome browser on your phone
 
-- 📱 **PWA** — install on your phone like an app (works offline)
-- 📊 **Google Sheets** as your database (connect directly to Looker Studio)
-- 🤖 **Gemini AI** reads your receipts and notes automatically
-- 🏎️ **F1-style dashboard** — full financial telemetry
-- 🔮 **Retirement & debt simulator** with your exact Brazilian salary/FGTS numbers
+That's it.
 
 ---
 
-## Step 1 — Create your Google Sheet
+## Step 1 of 4 — Get the backend code
 
-1. Go to [sheets.google.com](https://sheets.google.com)
-2. Click **+ Blank spreadsheet**
-3. Name it `Matt Money — Financial Data`
-4. Copy the **Spreadsheet ID** from the URL:
-   - URL looks like: `https://docs.google.com/spreadsheets/d/`**`1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms`**`/edit`
-   - The bold part is your Spreadsheet ID (you won't need this, but keep it handy)
+1. Open this in Chrome on your phone:
+   **`github.com/matthew-s-allen/matt-money-project`**
+
+2. Tap `apps-script` folder → tap `MattMoney.gs`
+
+3. Tap the **Raw** button (top-right of the file view)
+
+4. **Select all the text → Copy**
+   - Android: long-press → Select all → Copy
+   - iPhone: long-press → Select All → Copy
+
+> This is the only code you'll ever paste. Everything else updates automatically.
 
 ---
 
-## Step 2 — Deploy the Apps Script backend
+## Step 2 of 4 — Deploy the backend (~5 minutes)
 
-1. In your Google Sheet, go to **Extensions → Apps Script**
-2. You'll see a default `Code.gs` file. **Delete all its contents.**
-3. Create three files (click the **+** next to "Files"):
+1. Open a new tab → go to **`script.google.com`**
 
-### File 1: `Code.gs`
-Copy the entire contents of `apps-script/Code.gs` from this repo.
+2. Tap **New project** (the + button)
 
-### File 2: `Sheets.gs`
-Click **+** → New script file → name it `Sheets`
-Copy the entire contents of `apps-script/Sheets.gs` from this repo.
+3. You'll see a code editor with some default text.
+   **Select all of it → Delete → Paste** what you copied in Step 1.
 
-4. Click **Project Settings** (⚙️ gear icon) → check **"Show `appsscript.json` manifest file in editor"**
-5. Click `appsscript.json` in the file list and replace its contents with `apps-script/appsscript.json` from this repo.
+4. Tap the **Save** icon (💾) — name the project `Matt Money`
 
-6. **Initialize the sheets** (first-time only):
-   - In Apps Script, click the dropdown next to ▶ Run and select `handleInitSheets`
-   - Click ▶ Run
-   - Accept permissions when prompted
-   - This creates all the Sheet tabs automatically
+5. Tap the **▶ Run** button
+   - A dropdown appears — make sure it says **`setup`** → tap **Run**
+   - First time: tap **Review permissions** → choose your Google account → **Allow**
+   - Wait ~10 seconds
 
-7. **Deploy as Web App**:
-   - Click **Deploy → New deployment**
-   - Click the gear ⚙️ next to "Type" → select **Web app**
-   - Description: `Matt Money API v1`
+6. Tap **Execution log** at the bottom — you should see:
+   ```
+   ✅ SETUP COMPLETE!
+   📊 Your Google Sheet: https://docs.google.com/...
+   ```
+
+7. Now deploy it as an API:
+   - Tap **Deploy** (top-right) → **New deployment**
+   - Tap the ⚙️ gear next to "Type" → select **Web app**
+   - Description: `Matt Money v1`
    - Execute as: **Me**
-   - Who has access: **Anyone** _(no sign-in required — it's your personal data)_
-   - Click **Deploy**
-   - **Copy the Web App URL** — it looks like:
-     `https://script.google.com/macros/s/AKfycby.../exec`
-
-> ⚠️ **Important:** Every time you edit the Apps Script code, you must create a **new deployment** (Deploy → New deployment) and use the new URL. "Manage deployments" shows all versions.
+   - Who has access: **Anyone**
+   - Tap **Deploy**
+   - **Copy the Web App URL** and save it in your Notes app.
+     It looks like: `https://script.google.com/macros/s/AKfycb.../exec`
 
 ---
 
-## Step 3 — Get your free Gemini API key
+## Step 3 of 4 — Get your free Gemini API key (~2 minutes)
 
-1. Go to [aistudio.google.com](https://aistudio.google.com)
-2. Sign in with your Google account (same one with Gemini Pro)
-3. Click **Get API key** → **Create API key in new project**
-4. Copy the key (starts with `AIza...`)
+1. Open **`aistudio.google.com`** in Chrome
+2. Sign in with your Google account
+3. Tap **Get API key** → **Create API key**
+4. **Copy the key** (starts with `AIza...`) — save it in Notes
 
-> **This is free.** Gemini 1.5 Flash has a free tier of 15 requests/minute and 1,500/day — more than enough for personal receipt scanning.
-
----
-
-## Step 4 — Open and configure the app
-
-### Option A: GitHub Pages (recommended — works as a proper PWA)
-
-1. Push this repo to GitHub (if not already)
-2. Go to repo Settings → Pages → Branch: `claude/financial-tracking-app-8qqrM` → Folder: `/src`
-3. Your app will be at `https://yourusername.github.io/matt-money-project/`
-4. On your phone: open the URL in Chrome → tap ⋮ → **Add to Home Screen**
-
-### Option B: Open locally
-1. Open `src/index.html` directly in a browser (some PWA features won't work)
-
-### Configure the app
-
-On first launch, you'll see the setup screen:
-
-1. **Apps Script URL** — paste the URL from Step 2
-2. **Gemini API Key** — paste the key from Step 3
-3. Click **Activate Command Center**
-
-The app will automatically create all Sheet tabs and load your data.
+> Free tier = 1,500 AI receipt scans per day. Zero cost added.
 
 ---
 
-## Step 5 — Connect to Looker Studio
+## Step 4 of 4 — Open and activate the app
 
-1. Go to [lookerstudio.google.com](https://lookerstudio.google.com)
-2. Click **Create → Report**
-3. Select **Google Sheets** as data source
-4. Select your `Matt Money — Financial Data` spreadsheet
-5. Choose the `Transactions` sheet
-6. Build your dashboard! Recommended charts:
-   - Monthly spending by category (Bar chart)
-   - Income vs Expense trend (Line chart)
-   - Category breakdown (Pie/Donut)
-   - Running balance (Area chart)
+1. Open **`matthew-s-allen.github.io/matt-money-project`** in Chrome
 
----
+2. On the setup screen, enter:
+   - **Apps Script URL** — the URL from Step 2
+   - **Gemini API key** — the key from Step 3
 
-## Your Sheet structure
+3. Tap **Activate Command Center** — it connects to your Sheet and you're live 🏎️
 
-After initialization, you'll have these tabs:
-
-| Tab | What it stores |
-|-----|---------------|
-| `Transactions` | Every income/expense entry |
-| `Categories` | Category list with emojis, colors & budgets |
-| `Debts` | Your credit cards (Nubank, Itaú, etc.) |
-| `Patrimônio` | FGTS, car value, savings, investments |
-| `Salary_Milestones` | Your career salary progression plan |
-| `Config` | App configuration |
-| `Monthly_Cache` | Performance cache (auto-managed) |
+4. **Install on your home screen:**
+   - Android: tap ⋮ menu → **Add to Home screen**
+   - iPhone: tap the Share icon → **Add to Home Screen**
 
 ---
 
-## Adding transactions
+## That's it. You're done.
 
-### Fastest method: Camera 📸
-1. Tap **+** (red button in nav)
-2. Tap the camera zone → take a photo of your receipt or handwritten note
-3. Gemini reads it and suggests: merchant, amount, date, category, items
-4. Review the suggestion → tap **✓ Use these values**
-5. Add any extra notes → **Save**
-
-### Manual method
-1. Tap **+**
-2. Enter amount → select category → fill description
-3. Save — syncs to your Sheet instantly
-
-### Offline
-If you have no internet, transactions are queued locally and sync automatically when you reconnect.
+- ✅ Connected to your Google Sheet
+- ✅ AI receipt scanning active
+- ✅ Installed on your home screen like a real app
+- ✅ Works offline
+- ✅ **Updates automatically** — no action needed when improvements are made
 
 ---
 
-## Your defaults (pre-configured for you)
+## How future updates work
 
-| Setting | Value |
-|---------|-------|
-| Salary | R$ 7,500 |
-| FGTS | R$ 68,000 |
-| Car | R$ 50,000 (VW Up TSI 2018/19) |
-| Debt | R$ 14,000 (multiple cards) |
+When you want a new feature, just ask Claude Code (this conversation).
+It pushes the changes to GitHub → **your app updates automatically** the next time you open it.
 
-Update these anytime in **Settings** (⚙️ top right).
+For the rare backend change, you'll get a specific note like:
+> "Needs a backend update: in Apps Script, tap Deploy → New deployment → same settings → copy new URL → paste in app Settings ⚙️"
 
 ---
 
-## Simulator — Grand Prix
+## Daily use
 
-The simulator uses Brazilian financial data:
-- **CDI rate**: configurable (default 14.75% a.a.)
-- **IPCA**: 4.5% a.a.
-- **FGTS growth**: 6% a.a. + 8% salary contribution monthly
-- **Car depreciation**: 10% a.a.
-- **Debt payoff**: Avalanche method (highest interest first)
-- **Salary milestones**: Your exact career path (edit in Salary_Milestones sheet)
+| What you want | How |
+|---------------|-----|
+| Add a transaction | Red **+** button in nav bar |
+| Scan a receipt | Quick Add → tap camera zone → photo → Gemini reads it → save |
+| See this month | **Pit Lane** tab |
+| Plan your future | **Grand Prix** tab (retirement, debt, salary) |
+| Check net worth | **Garage** tab (FGTS + car + savings − debt) |
+| Change salary/FGTS | ⚙️ Settings top-right |
 
 ---
 
 ## Troubleshooting
 
-**"Apps Script URL not configured"**
-→ Go to Settings (⚙️) and paste your Web App URL
+**"Apps Script URL not configured"** → Settings ⚙️ → paste your Web App URL
 
-**"Gemini error: 403"**
-→ Check your API key is correct in Settings
+**"Gemini error"** → Settings ⚙️ → check your API key
 
-**"Sheet not found"**
-→ In Apps Script, run `handleInitSheets` to recreate all sheets
+**App not updating** → Pull down to refresh, or close + reopen from home screen
 
-**"CORS error" or "Failed to fetch"**
-→ Redeploy the Apps Script as a new deployment and update the URL in Settings
-
-**App not loading receipts**
-→ Make sure camera permissions are granted in your browser/phone settings
+**Lost your Web App URL** → Apps Script → Deploy → Manage deployments → copy URL
 
 ---
 
-## Cost breakdown
+## Your data
 
-| Service | Cost |
-|---------|------|
-| Google Sheets | Free |
-| Google Apps Script | Free (6 min/execution, 20k calls/day) |
-| Gemini 1.5 Flash API | Free (1,500 requests/day) |
-| GitHub Pages | Free |
-| Looker Studio | Free |
-| **Total** | **R$ 0** |
+Everything lives in **your** Google Sheet — you own it 100%.
 
-Your existing costs: Gemini Pro (R$ 99) + Claude Pro — neither is needed for runtime.
+Connect to **Looker Studio** anytime:
+1. `lookerstudio.google.com` → New Report → Google Sheets
+2. Select "Matt Money — Financial Data" → "Transactions" tab
+3. Build dashboards
 
 ---
 
-*Built with Claude Code · F1 Dark Mode · Made for Brasil 🇧🇷🏎️*
+*R$ 0/month extra · Your data · Auto-updates · 🇧🇷🏎️*
