@@ -82,7 +82,7 @@ const API = (() => {
       txCount:      monthly.length,
       avgPerDay:    daysPassed > 0 ? expenses / daysPassed : 0,
       savingsRate:  income > 0 ? (income - expenses) / income * 100 : 0,
-      recentTx:     monthly.slice(0, 10)
+      recentTx:     monthly.slice().sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0)).slice(0, 10)
     };
 
     Store.cache.set(cacheKey, summary);
