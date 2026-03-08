@@ -239,6 +239,7 @@ Critical extraction rules:
         response_mime_type: 'application/json',
         response_schema: RECEIPT_SCHEMA,
         maxOutputTokens: 2048,
+      },
     });
 
     const FALLBACK_CODES = new Set([429, 503, 404]);
