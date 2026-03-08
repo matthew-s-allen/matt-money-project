@@ -69,10 +69,26 @@
 
     <!-- Step 2: Employment & Salary Details -->
     <div id="setup-step-2" class="setup-step-content hidden">
-      <h2 class="setup-step-title">Salary & Vacation</h2>
+      <h2 class="setup-step-title">Salary & Benefits</h2>
       <p class="setup-step-desc">Your net salary will be calculated automatically based on CLT rules.</p>
 
-      <div class="divider-text" style="margin-top:0">Vacation Policy</div>
+      <div class="divider-text" style="margin-top:0">Income Schedule</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Adiantamento (R$)</label>
+          <input type="number" id="setup-adiantamento" class="form-input" placeholder="e.g. 3120" inputmode="decimal" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Adiantamento day</label>
+          <input type="number" id="setup-adiantamento-day" class="form-input" value="15" min="1" max="31" inputmode="numeric" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Salary payment day</label>
+        <input type="number" id="setup-salary-day" class="form-input" value="30" min="1" max="31" inputmode="numeric" />
+      </div>
+
+      <div class="divider-text">Vacation Policy</div>
       <div class="grid-2">
         <div class="form-group">
           <label class="form-label">Vacation days/year</label>
@@ -184,9 +200,19 @@
     <!-- Step 5: Credit Cards -->
     <div id="setup-step-5" class="setup-step-content hidden">
       <h2 class="setup-step-title">Credit Cards</h2>
-      <p class="setup-step-desc">Add your credit cards with current balances and limits.</p>
+      <p class="setup-step-desc">Add your credit cards with balances and limits.</p>
       <div id="setup-cards-list"></div>
       <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addCard()" style="margin-top:var(--space-sm)">+ Add credit card</button>
+
+      <!-- Fatura entry section — shown after at least one card is named -->
+      <div id="setup-faturas-section" class="hidden" style="margin-top:var(--space-lg)">
+        <div class="divider-text">Upcoming Faturas</div>
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:var(--space-md);line-height:1.5">
+          Open each card's app and enter the fatura amount for upcoming months. This bootstraps your debt timeline. Leave blank if you don't know yet.
+        </p>
+        <div id="setup-faturas-table"></div>
+      </div>
+
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
         <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(5)">Back</button>
         <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(5)">Continue</button>
@@ -304,6 +330,22 @@
     <div class="form-group">
       <label class="form-label">Car current value (R$)</label>
       <input type="number" id="settings-car-value" class="form-input" placeholder="50000" />
+    </div>
+
+    <div class="divider-text" style="margin-top:var(--space-lg)">Income Schedule</div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Adiantamento (R$)</label>
+        <input type="number" id="settings-adiantamento" class="form-input" placeholder="e.g. 3120" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Adiantamento day</label>
+        <input type="number" id="settings-adiantamento-day" class="form-input" placeholder="15" min="1" max="31" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Salary payment day</label>
+      <input type="number" id="settings-salary-day" class="form-input" placeholder="30" min="1" max="31" />
     </div>
 
     <div class="divider-text" style="margin-top:var(--space-lg)">Employment & Salary</div>
@@ -470,6 +512,7 @@
 <script src="js/views/dashboard.js"></script>
 <script src="js/views/add-transaction.js"></script>
 <script src="js/views/transactions.js"></script>
+<script src="js/views/cashflow.js"></script>
 <script src="js/views/accounts.js"></script>
 <script src="js/views/simulator.js"></script>
 <script src="js/views/patrimonio.js"></script>
