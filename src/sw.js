@@ -8,7 +8,7 @@
 
 // Bump this version when backend-incompatible changes are pushed.
 // Frontend-only changes are detected automatically via cache diff.
-const CACHE_NAME = 'matt-money-v4';
+const CACHE_NAME = 'matt-money-v5';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
