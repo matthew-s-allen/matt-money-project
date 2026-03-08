@@ -9,12 +9,16 @@ const AddTransaction = (() => {
     imageBase64: null,
     imageMime: null,
     aiSuggestion: null,
+    editedItems: [],    // live-edited copy of items from AI card
     isScanning: false
   };
 
+  // Safe HTML attribute escaping for user-supplied data in template literals
+  const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
   function render() {
     const container = document.getElementById('view-add');
-    state = { type: 'expense', category: 'food', imageBase64: null, imageMime: null, aiSuggestion: null, isScanning: false };
+    state = { type: 'expense', category: 'food', imageBase64: null, imageMime: null, aiSuggestion: null, editedItems: [], isScanning: false };
 
     container.innerHTML = `
       <div class="section-header">
@@ -148,14 +152,12 @@ const AddTransaction = (() => {
   }
 
   async function processImage(file) {
-    // Show preview
     const reader = new FileReader();
     reader.onload = async (e) => {
       const base64 = e.target.result.split(',')[1];
       state.imageBase64 = base64;
       state.imageMime = file.type;
 
-      // Show preview in camera zone
       const zone = document.getElementById('camera-zone');
       zone.innerHTML = `
         <input type="file" id="file-input-camera" accept="image/*" capture="environment" style="display:none" />
@@ -172,7 +174,6 @@ const AddTransaction = (() => {
       document.getElementById('file-input-camera').addEventListener('change', handleFileSelect);
       document.getElementById('file-input-file').addEventListener('change', handleFileSelect);
 
-      // Scan with Gemini
       await scanWithAI(base64, file.type);
     };
     reader.readAsDataURL(file);
@@ -195,7 +196,8 @@ const AddTransaction = (() => {
     try {
       const result = await API.parseReceiptWithGemini(base64, mimeType);
       state.aiSuggestion = result;
-      state.isScanning = false;
+      state.editedItems  = [...(result.items || [])];
+      state.isScanning   = false;
 
       statusEl.innerHTML = `
         <div class="ai-scanning" style="border-color:var(--green);background:var(--green-glow)">
@@ -204,11 +206,10 @@ const AddTransaction = (() => {
         </div>
       `;
 
-      // Show suggestion card
       suggCard.classList.remove('hidden');
       suggCard.innerHTML = renderAISuggestion(result);
 
-      // Auto-fill form fields (user can edit before saving)
+      // Auto-fill main form (user can also edit directly in the card above)
       autoFillFromAI(result);
 
     } catch (err) {
@@ -222,61 +223,157 @@ const AddTransaction = (() => {
     }
   }
 
+  // ── AI suggestion card (fully editable) ────────────────────
   function renderAISuggestion(r) {
     const confidenceColor = r.confidence === 'high' ? 'var(--green)' : r.confidence === 'medium' ? 'var(--yellow)' : 'var(--red)';
+    const catOptions = App.CATEGORIES.map(c =>
+      `<option value="${c.id}" ${c.id === r.category ? 'selected' : ''}>${c.emoji} ${c.label}</option>`
+    ).join('');
+
+    const metaBits = [
+      r.payment_method && `💳 ${r.payment_method}`,
+      r.taxes          && `Tax ${Fmt.currency(r.taxes)}`,
+      r.discount_total && `Saved ${Fmt.currency(r.discount_total)}`,
+      r.store_cnpj     && `CNPJ ${r.store_cnpj}`,
+    ].filter(Boolean).join(' · ');
+
     return `
       <div class="ai-suggestion">
         <div class="ai-tag">
           <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          Gemini Suggestion · Confidence: <span style="color:${confidenceColor};margin-left:2px">${r.confidence}</span>
+          Gemini Suggestion · Confidence: <span style="color:${confidenceColor};margin-left:2px">${r.confidence?.toUpperCase()}</span>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-sm);margin-bottom:var(--space-md)">
+        <div class="form-group" style="margin-bottom:var(--space-sm)">
+          <div class="t-label">Merchant</div>
+          <input id="ai-edit-merchant" class="form-input" style="margin-top:4px" value="${esc(r.merchant || '')}" placeholder="Merchant name" />
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-sm);margin-bottom:var(--space-sm)">
           <div>
-            <div class="t-label">Merchant</div>
-            <div style="font-size:14px;font-weight:500;margin-top:2px">${r.merchant || '—'}</div>
-          </div>
-          <div>
-            <div class="t-label">Total</div>
-            <div style="font-family:var(--font-display);font-size:18px;font-weight:700;margin-top:2px;color:var(--red)">${Fmt.currency(r.total || 0)}</div>
+            <div class="t-label">Total (R$)</div>
+            <input id="ai-edit-total" type="number" class="form-input"
+              style="margin-top:4px;font-family:var(--font-display);font-weight:700;color:var(--red)"
+              value="${r.total || 0}" min="0" step="0.01" inputmode="decimal" />
           </div>
           <div>
             <div class="t-label">Date</div>
-            <div style="font-size:14px;margin-top:2px">${r.date ? Fmt.dateShort(r.date) : '—'}</div>
-          </div>
-          <div>
-            <div class="t-label">Category</div>
-            <div style="font-size:14px;margin-top:2px">${App.getCat(r.category).emoji} ${App.getCat(r.category).label}</div>
+            <input id="ai-edit-date" type="date" class="form-input" style="margin-top:4px" value="${esc(r.date || '')}" />
           </div>
         </div>
 
-        ${r.items && r.items.length ? `
-          <div class="t-label" style="margin-bottom:var(--space-sm)">Items extracted</div>
-          ${r.items.slice(0,5).map(i => `
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);padding:4px 0;border-bottom:1px solid var(--border)">
-              <span>${i.name}</span>
-              <span style="font-family:var(--font-mono)">${Fmt.currency(i.price)}</span>
-            </div>
-          `).join('')}
-          ${r.items.length > 5 ? `<div class="t-muted" style="margin-top:4px">+ ${r.items.length-5} more items</div>` : ''}
+        <div class="form-group" style="margin-bottom:var(--space-sm)">
+          <div class="t-label">Category</div>
+          <select id="ai-edit-category" class="form-input" style="margin-top:4px">${catOptions}</select>
+        </div>
+
+        ${state.editedItems.length ? `
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div class="t-label">${state.editedItems.length} items extracted <span style="color:var(--text-muted);font-weight:400">— tap to edit</span></div>
+            <div style="font-size:10px;color:var(--text-muted)">name · qty · total</div>
+          </div>
+          <div id="ai-items-list" style="max-height:240px;overflow-y:auto;margin-bottom:4px">
+            ${state.editedItems.map((item, idx) => renderAIItemRow(item, idx)).join('')}
+          </div>
+          <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 8px;margin-top:2px"
+            onclick="AddTransaction.addAIItem()">+ Add item</button>
         ` : ''}
+
+        ${metaBits ? `<div style="font-size:11px;color:var(--text-muted);margin-top:var(--space-sm);line-height:1.6">${metaBits}</div>` : ''}
 
         <div style="display:flex;gap:var(--space-sm);margin-top:var(--space-md)">
           <button class="btn btn-success btn-sm" style="flex:1" onclick="AddTransaction.acceptAI()">
             ✓ Use these values
           </button>
-          <button class="btn btn-secondary btn-sm" onclick="AddTransaction.clearAI()">
-            Ignore
-          </button>
+          <button class="btn btn-secondary btn-sm" onclick="AddTransaction.clearAI()">Ignore</button>
         </div>
       </div>
     `;
   }
 
+  function renderAIItemRow(item, idx) {
+    return `
+      <div id="ai-item-row-${idx}" style="display:flex;align-items:center;gap:3px;padding:3px 0;border-bottom:1px solid var(--border)">
+        <input id="ai-item-name-${idx}" class="form-input"
+          value="${esc(item.name || '')}" placeholder="Item name"
+          style="flex:1;font-size:11px;padding:3px 5px;min-width:0;height:auto" />
+        <input type="number" id="ai-item-qty-${idx}" value="${item.qty ?? 1}" min="0" step="any"
+          title="Qty"
+          style="width:44px;font-size:11px;padding:3px 4px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;color:var(--text-secondary);text-align:center" />
+        <input type="number" id="ai-item-price-${idx}" value="${item.price ?? 0}" min="0" step="0.01" inputmode="decimal"
+          title="Line total (R$)"
+          style="width:64px;font-size:11px;padding:3px 4px;background:var(--surface-2);border:1px solid var(--border);border-radius:4px;color:var(--red);font-family:var(--font-mono);text-align:right" />
+        <button onclick="AddTransaction.removeAIItem(${idx})" title="Remove"
+          style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:18px;line-height:1;padding:0 3px;flex-shrink:0">×</button>
+      </div>
+    `;
+  }
+
+  // Flush all visible item row inputs back into state.editedItems
+  function saveEditedItemsToState() {
+    state.editedItems = state.editedItems.map((item, idx) => {
+      const nameEl  = document.getElementById(`ai-item-name-${idx}`);
+      const qtyEl   = document.getElementById(`ai-item-qty-${idx}`);
+      const priceEl = document.getElementById(`ai-item-price-${idx}`);
+      if (!nameEl) return null;
+      return {
+        ...item,
+        name:  nameEl.value.trim(),
+        qty:   parseFloat(qtyEl?.value)   || 1,
+        price: parseFloat(priceEl?.value) || 0,
+      };
+    }).filter(Boolean);
+  }
+
+  function reRenderItemsList() {
+    const list = document.getElementById('ai-items-list');
+    if (!list) return;
+    list.innerHTML = state.editedItems.map((item, idx) => renderAIItemRow(item, idx)).join('');
+  }
+
+  function addAIItem() {
+    saveEditedItemsToState();
+    state.editedItems.push({ name: '', qty: 1, price: 0 });
+    reRenderItemsList();
+  }
+
+  function removeAIItem(idx) {
+    saveEditedItemsToState();
+    state.editedItems.splice(idx, 1);
+    reRenderItemsList();
+  }
+
+  // Read card inputs → sync to main form + update state
+  function acceptAI() {
+    if (!state.aiSuggestion) return;
+    saveEditedItemsToState();
+
+    const merchant = document.getElementById('ai-edit-merchant')?.value.trim() || '';
+    const total    = parseFloat(document.getElementById('ai-edit-total')?.value) || 0;
+    const date     = document.getElementById('ai-edit-date')?.value || '';
+    const category = document.getElementById('ai-edit-category')?.value || 'other';
+
+    // Push to main form
+    const mEl    = document.getElementById('tx-merchant');
+    const aEl    = document.getElementById('tx-amount');
+    const dateEl = document.getElementById('tx-date');
+    const descEl = document.getElementById('tx-description');
+    if (mEl)    mEl.value    = merchant;
+    if (aEl)    aEl.value    = total;
+    if (dateEl) dateEl.value = date;
+    if (descEl && !descEl.value) descEl.value = state.aiSuggestion.description || merchant;
+    selectCategory(category);
+
+    // Keep suggestion state in sync
+    state.aiSuggestion = { ...state.aiSuggestion, merchant, total, date, category, items: state.editedItems };
+
+    App.toast('Applied! Review details below and save.', 'success', 2000);
+  }
+
   function autoFillFromAI(r) {
     if (r.total && r.total > 0) {
-      const amtEl = document.getElementById('tx-amount');
-      if (amtEl && !amtEl.value) amtEl.value = r.total;
+      const aEl = document.getElementById('tx-amount');
+      if (aEl && !aEl.value) aEl.value = r.total;
     }
     if (r.merchant) {
       const mEl = document.getElementById('tx-merchant');
@@ -290,29 +387,21 @@ const AddTransaction = (() => {
       const dateEl = document.getElementById('tx-date');
       if (dateEl) dateEl.value = r.date;
     }
-    if (r.category) {
-      selectCategory(r.category);
-    }
-    if (r.type === 'income') {
-      setType('income');
-    }
-  }
-
-  function acceptAI() {
-    if (!state.aiSuggestion) return;
-    autoFillFromAI(state.aiSuggestion);
-    App.toast('AI values applied. Review and save!', 'success', 2000);
+    if (r.category) selectCategory(r.category);
+    if (r.type === 'income') setType('income');
   }
 
   function clearAI() {
     state.aiSuggestion = null;
+    state.editedItems  = [];
     document.getElementById('ai-suggestion-card').classList.add('hidden');
   }
 
   function clearImage() {
-    state.imageBase64 = null;
-    state.imageMime = null;
+    state.imageBase64  = null;
+    state.imageMime    = null;
     state.aiSuggestion = null;
+    state.editedItems  = [];
 
     const zone = document.getElementById('camera-zone');
     zone.innerHTML = `
@@ -355,15 +444,27 @@ const AddTransaction = (() => {
     btn.disabled = true;
     btn.textContent = 'Saving...';
 
+    // Sync any last edits from the AI card before saving
+    if (state.aiSuggestion) saveEditedItemsToState();
+    const ai = state.aiSuggestion || {};
+
     const tx = {
-      type: state.type,
+      type:        state.type,
       amount,
       description: description || merchant,
       merchant,
-      category: state.category,
-      date: date || Fmt.toISODate(new Date()),
+      category:    state.category,
+      date:        date || Fmt.toISODate(new Date()),
       notes,
-      items: state.aiSuggestion?.items || [],
+      // Line items (uses card-edited version if present, falls back to raw AI, then empty)
+      items: state.editedItems.length > 0 ? state.editedItems : (ai.items || []),
+      // Rich receipt metadata — only stored when present
+      ...(ai.payment_method  && { payment_method:  ai.payment_method  }),
+      ...(ai.store_cnpj      && { store_cnpj:       ai.store_cnpj      }),
+      ...(ai.time            && { receipt_time:     ai.time            }),
+      ...(ai.taxes           && { taxes:            ai.taxes           }),
+      ...(ai.discount_total  && { discount_total:   ai.discount_total  }),
+      ...(ai.nfe_key         && { nfe_key:          ai.nfe_key         }),
       createdAt: new Date().toISOString()
     };
 
@@ -376,7 +477,6 @@ const AddTransaction = (() => {
         App.toast(`${state.type === 'income' ? 'Income' : 'Expense'} saved! ${Fmt.currency(amount)}`, 'success');
       }
 
-      // Reset form and go to dashboard
       setTimeout(() => App.navigate('dashboard'), 600);
     } catch (e) {
       btn.disabled = false;
@@ -385,5 +485,5 @@ const AddTransaction = (() => {
     }
   }
 
-  return { render, setType, selectCategory, clearImage, acceptAI, clearAI, save };
+  return { render, setType, selectCategory, clearImage, acceptAI, clearAI, addAIItem, removeAIItem, save };
 })();
