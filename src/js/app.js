@@ -14,6 +14,11 @@ const App = (() => {
     theme: 'claude' // 'claude' or 'dark'
   };
 
+  // ── HTML escaping for user data in innerHTML ─────────────
+  function esc(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g, '&#39;');
+  }
+
   // ── Category definitions ──────────────────────────────────
   const CATEGORIES = [
     { id: 'food',          emoji: '🛒', label: 'Food',          color: '#f97316' },
@@ -47,26 +52,29 @@ const App = (() => {
 
   // ── Navigation ─────────────────────────────────────────────
   function navigate(view) {
-    if (state.activeView === view) return;
+    const isSameView = state.activeView === view;
     state.activeView = view;
-    Store.ui.set({ activeView: view });
 
-    // Hide all views
-    document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
-    // Show target
-    const target = document.getElementById(`view-${view}`);
-    if (target) target.classList.remove('hidden');
+    if (!isSameView) {
+      Store.ui.set({ activeView: view });
 
-    // Update nav items
-    document.querySelectorAll('.nav-item, .nav-fab').forEach(el => {
-      el.classList.toggle('active', el.dataset.view === view);
-    });
+      // Hide all views
+      document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
+      // Show target
+      const target = document.getElementById(`view-${view}`);
+      if (target) target.classList.remove('hidden');
 
-    // Update header month display
-    const monthDisplay = document.getElementById('header-month-display');
-    if (monthDisplay) monthDisplay.textContent = Fmt.monthYearFull(state.activeMonth + '-01');
+      // Update nav items
+      document.querySelectorAll('.nav-item, .nav-fab').forEach(el => {
+        el.classList.toggle('active', el.dataset.view === view);
+      });
 
-    // Render the view
+      // Update header month display
+      const monthDisplay = document.getElementById('header-month-display');
+      if (monthDisplay) monthDisplay.textContent = Fmt.monthYearFull(state.activeMonth + '-01');
+    }
+
+    // Always render the view (allows refresh on same view)
     renderView(view);
   }
 
@@ -149,7 +157,7 @@ const App = (() => {
     const geminiKey = document.getElementById('settings-gemini-key').value.trim();
     const theme = document.getElementById('settings-theme').value;
 
-    if (geminiKey) Store.config.set({ geminiKey });
+    Store.config.set({ geminiKey: geminiKey || '' });
 
     Store.profile.set({
       name:      document.getElementById('settings-name').value.trim() || 'Matthew',
@@ -165,8 +173,15 @@ const App = (() => {
     setTimeout(() => renderView(state.activeView), 300);
   }
 
+  // ── Transaction lookup by ID ─────────────────────────────
+  function getTxById(id) {
+    return Store.data.getTransactions().find(t => t.id === id);
+  }
+
   // ── Transaction detail modal ──────────────────────────────
-  function openTxDetail(tx) {
+  function openTxDetail(txOrId) {
+    const tx = typeof txOrId === 'string' ? getTxById(txOrId) : txOrId;
+    if (!tx) return;
     const modal = document.getElementById('tx-detail-modal');
     const content = document.getElementById('tx-detail-content');
     const cat = getCat(tx.category);
@@ -187,8 +202,8 @@ const App = (() => {
       <div style="display:flex;align-items:center;gap:var(--space-md);margin-bottom:var(--space-lg)">
         <div class="tx-icon" style="width:52px;height:52px;font-size:24px">${cat.emoji}</div>
         <div>
-          <div style="font-size:20px;font-weight:700">${tx.description || tx.merchant}</div>
-          <div style="font-size:12px;color:var(--text-muted)">${Fmt.dateShort(tx.date)} · ${cat.label}</div>
+          <div style="font-size:20px;font-weight:700">${esc(tx.description || tx.merchant)}</div>
+          <div style="font-size:12px;color:var(--text-muted)">${Fmt.dateShort(tx.date)} · ${esc(cat.label)}</div>
         </div>
       </div>
 
@@ -197,20 +212,20 @@ const App = (() => {
         <div class="hero-value" style="color:${tx.type==='income'?'var(--green)':'var(--red)'}">${Fmt.currency(tx.amount)}</div>
       </div>
 
-      ${paymentSource ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Payment source</div><div class="tx-name">${paymentSource}</div></div></div>` : ''}
-      ${tx.merchant ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Merchant</div><div class="tx-name">${tx.merchant}</div></div></div>` : ''}
-      ${tx.notes ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Notes</div><div class="tx-name">${tx.notes}</div></div></div>` : ''}
+      ${paymentSource ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Payment source</div><div class="tx-name">${esc(paymentSource)}</div></div></div>` : ''}
+      ${tx.merchant ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Merchant</div><div class="tx-name">${esc(tx.merchant)}</div></div></div>` : ''}
+      ${tx.notes ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Notes</div><div class="tx-name">${esc(tx.notes)}</div></div></div>` : ''}
       ${tx.items && tx.items.length ? `
         <div style="margin-top:var(--space-md)">
           <div class="t-label" style="margin-bottom:var(--space-sm)">Items</div>
-          ${tx.items.map(i => `<div class="tx-item"><div class="tx-info"><div class="tx-name">${i.name}</div><div class="tx-meta">Qty: ${i.qty}</div></div><div class="tx-amount expense">${Fmt.currency(i.price)}</div></div>`).join('')}
+          ${tx.items.map(i => `<div class="tx-item"><div class="tx-info"><div class="tx-name">${esc(i.name)}</div><div class="tx-meta">Qty: ${i.qty}</div></div><div class="tx-amount expense">${Fmt.currency(i.price)}</div></div>`).join('')}
         </div>
       ` : ''}
 
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
         <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('tx-detail-modal').classList.add('hidden')">Close</button>
-        <button class="btn btn-primary" style="flex:1" onclick="App.openEditTx(${JSON.stringify(tx).replace(/"/g,'&quot;')})">Edit</button>
-        <button class="btn" style="flex:0;background:var(--red-glow);color:var(--red);border:1px solid var(--border-accent)" onclick="App.confirmDeleteTx('${tx.id}')">
+        <button class="btn btn-primary" style="flex:1" onclick="App.openEditTx('${esc(tx.id)}')">Edit</button>
+        <button class="btn" style="flex:0;background:var(--red-glow);color:var(--red);border:1px solid var(--border-accent)" onclick="App.confirmDeleteTx('${esc(tx.id)}')">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
         </button>
       </div>
@@ -219,7 +234,9 @@ const App = (() => {
     modal.classList.remove('hidden');
   }
 
-  function openEditTx(tx) {
+  function openEditTx(txOrId) {
+    const tx = typeof txOrId === 'string' ? getTxById(txOrId) : txOrId;
+    if (!tx) return;
     const content = document.getElementById('tx-detail-content');
 
     // Build account/card options
@@ -227,8 +244,8 @@ const App = (() => {
     const cards = Store.data.getCreditCards();
     const allSources = [
       { id: '', label: 'No account linked' },
-      ...accounts.map(a => ({ id: a.id, label: `🏦 ${a.name}` })),
-      ...cards.map(c => ({ id: c.id, label: `💳 ${c.name}` }))
+      ...accounts.map(a => ({ id: a.id, label: `🏦 ${esc(a.name)}` })),
+      ...cards.map(c => ({ id: c.id, label: `💳 ${esc(c.name)}` }))
     ];
 
     content.innerHTML = `
@@ -246,11 +263,11 @@ const App = (() => {
       </div>
       <div class="form-group">
         <label class="form-label">Description</label>
-        <input type="text" id="edit-description" class="form-input" value="${tx.description || ''}" />
+        <input type="text" id="edit-description" class="form-input" value="${esc(tx.description || '')}" />
       </div>
       <div class="form-group">
         <label class="form-label">Merchant</label>
-        <input type="text" id="edit-merchant" class="form-input" value="${tx.merchant || ''}" />
+        <input type="text" id="edit-merchant" class="form-input" value="${esc(tx.merchant || '')}" />
       </div>
       <div class="form-group">
         <label class="form-label">Date</label>
@@ -259,12 +276,12 @@ const App = (() => {
       <div class="form-group">
         <label class="form-label">Account / Card</label>
         <select id="edit-account" class="form-input">
-          ${allSources.map(s => `<option value="${s.id}" ${s.id === (tx.accountId || '') ? 'selected' : ''}>${s.label}</option>`).join('')}
+          ${allSources.map(s => `<option value="${esc(s.id)}" ${s.id === (tx.accountId || '') ? 'selected' : ''}>${s.label}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
         <label class="form-label">Notes</label>
-        <textarea id="edit-notes" class="form-textarea">${tx.notes || ''}</textarea>
+        <textarea id="edit-notes" class="form-textarea">${esc(tx.notes || '')}</textarea>
       </div>
       <div class="form-group">
         <label class="form-label">Category</label>
@@ -280,8 +297,8 @@ const App = (() => {
       </div>
 
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
-        <button class="btn btn-secondary" style="flex:1" onclick="App.openTxDetail(${JSON.stringify(tx).replace(/"/g,'&quot;')})">Back</button>
-        <button class="btn btn-primary" style="flex:1" id="edit-save-btn" onclick="App.saveEditTx('${tx.id}')">Save</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="App.openTxDetail('${esc(tx.id)}')">Back</button>
+        <button class="btn btn-primary" style="flex:1" id="edit-save-btn" onclick="App.saveEditTx('${esc(tx.id)}')">Save</button>
       </div>
     `;
   }
@@ -399,6 +416,10 @@ const App = (() => {
     document.getElementById('settings-import-file').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      if (!confirm('This will overwrite all existing data. Are you sure you want to import this backup?')) {
+        e.target.value = '';
+        return;
+      }
       try {
         await API.importData(file);
         toast('Data imported successfully', 'success');
@@ -461,6 +482,7 @@ const App = (() => {
     state,
     navigate,
     toast,
+    esc,
     setMonth,
     prevMonth,
     nextMonth,

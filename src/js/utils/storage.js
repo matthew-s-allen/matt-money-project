@@ -93,7 +93,9 @@ const Store = (() => {
         milestones:   data.getMilestones(),
         accounts:     data.getAccounts(),
         creditCards:  data.getCreditCards(),
-        setupDone:    data.isSetupDone()
+        setupDone:    data.isSetupDone(),
+        profile:      profile.get(),
+        config:       config.get()
       };
     },
 
@@ -108,19 +110,24 @@ const Store = (() => {
       if (blob.accounts)     data.setAccounts(blob.accounts);
       if (blob.creditCards)  data.setCreditCards(blob.creditCards);
       if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
+      if (blob.profile)  profile.set(blob.profile);
+      if (blob.config)   config.set(blob.config);
     }
   };
 
   // ── Short-lived in-memory cache (computed summaries) ───────
+  const _memCache = {};
   const cache = {
-    get(key) { return raw.get(`cache_${key}`, null); },
-    set(key, val) { raw.set(`cache_${key}`, { data: val, ts: Date.now() }); },
+    get(key) { return _memCache[key] || null; },
+    set(key, val) { _memCache[key] = { data: val, ts: Date.now() }; },
     fresh(key, maxAgeMs = 5000) {
-      const c = raw.get(`cache_${key}`, null);
+      const c = _memCache[key];
       return c && (Date.now() - c.ts < maxAgeMs) ? c.data : null;
     },
-    invalidate(key) { raw.del(`cache_${key}`); },
+    invalidate(key) { delete _memCache[key]; },
     invalidateAll() {
+      Object.keys(_memCache).forEach(k => delete _memCache[k]);
+      // Clean up any legacy cache keys from localStorage
       Object.keys(localStorage)
         .filter(k => k.startsWith(PREFIX + 'cache_'))
         .forEach(k => localStorage.removeItem(k));

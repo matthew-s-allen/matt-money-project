@@ -182,14 +182,13 @@ const Transactions = (() => {
   }
 
   function renderTxItem(tx) {
-    const cat    = App.getCat(tx.category);
-    const txJson = JSON.stringify(tx).replace(/"/g, '&quot;');
+    const cat = App.getCat(tx.category);
     return `
-      <div class="tx-item" onclick="App.openTxDetail(${txJson})" style="cursor:pointer">
+      <div class="tx-item" onclick="App.openTxDetail('${App.esc(tx.id)}')" style="cursor:pointer">
         <div class="tx-icon">${cat.emoji}</div>
         <div class="tx-info">
-          <div class="tx-name">${tx.description || tx.merchant || 'Transaction'}</div>
-          <div class="tx-meta">${cat.label}${tx.merchant && tx.merchant !== tx.description ? ' · ' + tx.merchant : ''}</div>
+          <div class="tx-name">${App.esc(tx.description || tx.merchant || 'Transaction')}</div>
+          <div class="tx-meta">${cat.label}${tx.merchant && tx.merchant !== tx.description ? ' · ' + App.esc(tx.merchant) : ''}</div>
         </div>
         <div class="tx-amount ${tx.type === 'income' ? 'income' : 'expense'}">${tx.type === 'income' ? '+' : '-'}${Fmt.currency(tx.amount)}</div>
       </div>

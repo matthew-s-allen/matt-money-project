@@ -25,6 +25,10 @@ const API = (() => {
     };
     txs.push(newTx);
     Store.data.setTransactions(txs);
+    // Auto-update linked account/card balance
+    if (newTx.accountId) {
+      adjustAccountBalance(newTx.accountId, newTx.type === 'income' ? newTx.amount : -newTx.amount);
+    }
     Store.cache.invalidateAll();
     return { data: newTx, success: true };
   }
@@ -33,16 +37,50 @@ const API = (() => {
     const txs = Store.data.getTransactions();
     const idx = txs.findIndex(t => t.id === id);
     if (idx === -1) throw new Error('Transaction not found: ' + id);
-    txs[idx] = { ...txs[idx], ...updates, id };
+    const oldTx = txs[idx];
+    txs[idx] = { ...oldTx, ...updates, id };
+    const newTx = txs[idx];
     Store.data.setTransactions(txs);
+    // Reverse old balance impact, apply new
+    if (oldTx.accountId) {
+      adjustAccountBalance(oldTx.accountId, oldTx.type === 'income' ? -oldTx.amount : oldTx.amount);
+    }
+    if (newTx.accountId) {
+      adjustAccountBalance(newTx.accountId, newTx.type === 'income' ? newTx.amount : -newTx.amount);
+    }
     Store.cache.invalidateAll();
-    return { data: txs[idx], success: true };
+    return { data: newTx, success: true };
   }
 
   async function deleteTransaction(id) {
-    Store.data.setTransactions(Store.data.getTransactions().filter(t => t.id !== id));
+    const txs = Store.data.getTransactions();
+    const tx = txs.find(t => t.id === id);
+    Store.data.setTransactions(txs.filter(t => t.id !== id));
+    // Reverse balance impact
+    if (tx && tx.accountId) {
+      adjustAccountBalance(tx.accountId, tx.type === 'income' ? -tx.amount : tx.amount);
+    }
     Store.cache.invalidateAll();
     return { success: true };
+  }
+
+  // ── Account balance auto-adjustment ─────────────────────
+  function adjustAccountBalance(accountId, delta) {
+    // Try bank accounts first
+    const accounts = Store.data.getAccounts();
+    const acctIdx = accounts.findIndex(a => a.id === accountId);
+    if (acctIdx >= 0) {
+      accounts[acctIdx].balance = (accounts[acctIdx].balance || 0) + delta;
+      Store.data.setAccounts(accounts);
+      return;
+    }
+    // Try credit cards (expenses increase balance, income decreases it)
+    const cards = Store.data.getCreditCards();
+    const cardIdx = cards.findIndex(c => c.id === accountId);
+    if (cardIdx >= 0) {
+      cards[cardIdx].currentBalance = (cards[cardIdx].currentBalance || 0) - delta;
+      Store.data.setCreditCards(cards);
+    }
   }
 
   // ── Summary (computed locally) ────────────────────────────

@@ -8,7 +8,7 @@
 
 // Bump this version when backend-incompatible changes are pushed.
 // Frontend-only changes are detected automatically via cache diff.
-const CACHE_NAME = 'matt-money-v5';
+const CACHE_NAME = 'matt-money-v6';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -20,11 +20,12 @@ const STATIC_ASSETS = [
   '/js/views/dashboard.js',
   '/js/views/add-transaction.js',
   '/js/views/transactions.js',
+  '/js/views/accounts.js',
   '/js/views/simulator.js',
   '/js/views/patrimonio.js',
   '/js/app.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
-  'https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap'
+  'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap'
 ];
 
 self.addEventListener('install', (event) => {
