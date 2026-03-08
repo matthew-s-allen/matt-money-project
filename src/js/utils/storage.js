@@ -166,5 +166,163 @@ const Store = (() => {
     val(key, fallback = null) { return ui.get()[key] ?? fallback; }
   };
 
-  return { raw, config, data, cache, queue, profile, ui };
+  // ── Backup system (IndexedDB) ──────────────────────────────
+  const DB_NAME = 'mm_backups';
+  const DB_VERSION = 1;
+  const DB_STORE = 'snapshots';
+
+  function openBackupDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          const store = db.createObjectStore(DB_STORE, { keyPath: 'id' });
+          store.createIndex('account', 'account', { unique: false });
+          store.createIndex('date', 'date', { unique: false });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  const backup = {
+    // Save a snapshot for the given account
+    async save(accountName) {
+      const db = await openBackupDB();
+      const snapshot = {
+        id: crypto.randomUUID(),
+        account: accountName,
+        date: new Date().toISOString(),
+        dateKey: new Date().toISOString().slice(0, 10),
+        data: data.exportAll()
+      };
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put(snapshot);
+        tx.oncomplete = () => { db.close(); resolve(snapshot); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      });
+    },
+
+    // List all snapshots for an account (newest first)
+    async list(accountName) {
+      const db = await openBackupDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readonly');
+        const idx = tx.objectStore(DB_STORE).index('account');
+        const req = idx.getAll(accountName);
+        req.onsuccess = () => {
+          db.close();
+          resolve(req.result.sort((a, b) => b.date.localeCompare(a.date)));
+        };
+        req.onerror = () => { db.close(); reject(req.error); };
+      });
+    },
+
+    // List all unique account names
+    async getAccounts() {
+      const db = await openBackupDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readonly');
+        const req = tx.objectStore(DB_STORE).getAll();
+        req.onsuccess = () => {
+          db.close();
+          const names = [...new Set(req.result.map(s => s.account))];
+          resolve(names.sort());
+        };
+        req.onerror = () => { db.close(); reject(req.error); };
+      });
+    },
+
+    // Get a specific snapshot
+    async get(id) {
+      const db = await openBackupDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readonly');
+        const req = tx.objectStore(DB_STORE).get(id);
+        req.onsuccess = () => { db.close(); resolve(req.result); };
+        req.onerror = () => { db.close(); reject(req.error); };
+      });
+    },
+
+    // Restore from a snapshot
+    async restore(id) {
+      const snapshot = await backup.get(id);
+      if (!snapshot) throw new Error('Backup not found');
+      data.importAll(snapshot.data);
+      cache.invalidateAll();
+      return snapshot;
+    },
+
+    // Delete a specific snapshot
+    async remove(id) {
+      const db = await openBackupDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).delete(id);
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      });
+    },
+
+    // Remove backups older than maxDays for an account
+    async cleanup(accountName, maxDays = 30) {
+      const all = await backup.list(accountName);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - maxDays);
+      const old = all.filter(s => new Date(s.date) < cutoff);
+      for (const s of old) {
+        await backup.remove(s.id);
+      }
+      return old.length;
+    },
+
+    // Delete ALL snapshots for an account
+    async deleteAccount(accountName) {
+      const all = await backup.list(accountName);
+      for (const s of all) {
+        await backup.remove(s.id);
+      }
+      return all.length;
+    },
+
+    // Get the active account name
+    getActiveAccount() {
+      return raw.get('backup_account', '');
+    },
+
+    // Set the active account name
+    setActiveAccount(name) {
+      raw.set('backup_account', name);
+    },
+
+    // Get the stored directory handle (if File System Access API was used)
+    async getDirectoryHandle() {
+      try {
+        const db = await openBackupDB();
+        // Store handle separately in a simple key-value pattern
+        return new Promise((resolve) => {
+          const tx = db.transaction(DB_STORE, 'readonly');
+          const req = tx.objectStore(DB_STORE).get('__dir_handle__');
+          req.onsuccess = () => { db.close(); resolve(req.result?.handle || null); };
+          req.onerror = () => { db.close(); resolve(null); };
+        });
+      } catch { return null; }
+    },
+
+    // Store directory handle
+    async setDirectoryHandle(handle) {
+      const db = await openBackupDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put({ id: '__dir_handle__', handle });
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => { db.close(); reject(tx.error); };
+      });
+    }
+  };
+
+  return { raw, config, data, cache, queue, profile, ui, backup };
 })();
