@@ -85,6 +85,10 @@ const Store = (() => {
     getInstallments()      { return raw.get('data_installments', []); },
     setInstallments(v)     { raw.set('data_installments', v); },
 
+    // ── Manual Faturas (per card per month) ───────────────────
+    getFaturas()           { return raw.get('data_faturas', []); },
+    setFaturas(v)          { raw.set('data_faturas', v); },
+
     // Export everything as a single JSON blob
     exportAll() {
       return {
@@ -98,6 +102,7 @@ const Store = (() => {
         accounts:      data.getAccounts(),
         creditCards:   data.getCreditCards(),
         installments:  data.getInstallments(),
+        faturas:       data.getFaturas(),
         setupDone:     data.isSetupDone(),
         profile:       profile.get(),
         config:        config.get()
@@ -115,6 +120,7 @@ const Store = (() => {
       if (blob.accounts)      data.setAccounts(blob.accounts);
       if (blob.creditCards)   data.setCreditCards(blob.creditCards);
       if (blob.installments)  data.setInstallments(blob.installments);
+      if (blob.faturas)       data.setFaturas(blob.faturas);
       if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
       if (blob.profile)  profile.set(blob.profile);
       if (blob.config)   config.set(blob.config);

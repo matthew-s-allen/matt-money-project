@@ -720,7 +720,7 @@ const SetupWizard = (() => {
       accounts.push({ name: '', bank: '', type: 'checking', balance: 0 });
     }
     if (cards.length === 0) {
-      cards.push({ name: '', brand: '', limit: 0, currentBalance: 0 });
+      cards.push({ name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
     }
 
     // Pre-fill step 1: profile
@@ -956,6 +956,7 @@ const SetupWizard = (() => {
 
   // ── Cards management ──────────────────────────────────────
   function renderCards() {
+    const accounts = Store.data.getAccounts();
     const el = document.getElementById('setup-cards-list');
     el.innerHTML = cards.map((c, i) => `
       <div class="setup-card-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
@@ -963,7 +964,8 @@ const SetupWizard = (() => {
           <input type="text" class="form-input setup-card-name" value="${c.name || ''}" placeholder="Card name (e.g. Nubank)" style="flex:1" />
           <input type="text" class="form-input setup-card-brand" value="${c.brand || ''}" placeholder="Brand" style="width:100px" />
         </div>
-        <div style="display:flex;gap:var(--space-sm);align-items:center">
+        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
+          <input type="text" class="form-input setup-card-last4" value="${c.lastFourDigits || ''}" placeholder="Last 4 digits" maxlength="4" style="width:90px" inputmode="numeric" />
           <div style="position:relative;flex:1">
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">Limit</span>
             <input type="number" class="form-input setup-card-limit" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" style="padding-left:42px" />
@@ -972,6 +974,30 @@ const SetupWizard = (() => {
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">Bill</span>
             <input type="number" class="form-input setup-card-balance" value="${c.currentBalance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" style="padding-left:30px" />
           </div>
+        </div>
+        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
+          <div style="position:relative;flex:1">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Closes</span>
+            <input type="number" class="form-input setup-card-closing" value="${c.closingDay || ''}" placeholder="15" min="1" max="31" style="padding-left:48px" inputmode="numeric" />
+          </div>
+          <div style="position:relative;flex:1">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Due</span>
+            <input type="number" class="form-input setup-card-due" value="${c.dueDay || ''}" placeholder="25" min="1" max="31" style="padding-left:34px" inputmode="numeric" />
+          </div>
+          <div style="position:relative;flex:1">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Rate%</span>
+            <input type="number" class="form-input setup-card-interest" value="${c.interestRate || ''}" placeholder="14.5" step="0.1" style="padding-left:44px" inputmode="decimal" />
+          </div>
+        </div>
+        <div style="display:flex;gap:var(--space-sm);align-items:center">
+          <div style="position:relative;flex:1">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Annual fee</span>
+            <input type="number" class="form-input setup-card-annual-fee" value="${c.annualFee || ''}" placeholder="0" inputmode="decimal" style="padding-left:70px" />
+          </div>
+          <select class="form-input setup-card-payment-account" style="flex:1">
+            <option value="">Pays from...</option>
+            ${accounts.map(a => `<option value="${a.id}" ${c.paymentAccountId === a.id ? 'selected' : ''}>${App.esc(a.name || a.bank || 'Account')}</option>`).join('')}
+          </select>
           ${cards.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeCard(${i})" style="color:var(--red);padding:8px">✕</button>` : ''}
         </div>
       </div>
@@ -980,7 +1006,7 @@ const SetupWizard = (() => {
 
   function addCard() {
     saveCardsFromDOM();
-    cards.push({ name: '', brand: '', limit: 0, currentBalance: 0 });
+    cards.push({ name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
     renderCards();
   }
 
@@ -996,8 +1022,14 @@ const SetupWizard = (() => {
       ...(cards[i]?.id ? { id: cards[i].id } : {}),
       name: row.querySelector('.setup-card-name').value.trim(),
       brand: row.querySelector('.setup-card-brand').value.trim(),
+      lastFourDigits: row.querySelector('.setup-card-last4').value.trim(),
       limit: parseFloat(row.querySelector('.setup-card-limit').value) || 0,
-      currentBalance: parseFloat(row.querySelector('.setup-card-balance').value) || 0
+      currentBalance: parseFloat(row.querySelector('.setup-card-balance').value) || 0,
+      closingDay: parseInt(row.querySelector('.setup-card-closing').value) || '',
+      dueDay: parseInt(row.querySelector('.setup-card-due').value) || '',
+      interestRate: parseFloat(row.querySelector('.setup-card-interest').value) || '',
+      annualFee: parseFloat(row.querySelector('.setup-card-annual-fee').value) || 0,
+      paymentAccountId: row.querySelector('.setup-card-payment-account').value || ''
     }));
   }
 
