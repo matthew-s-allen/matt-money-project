@@ -10,11 +10,12 @@ const Patrimonio = (() => {
     container.innerHTML = renderSkeleton();
 
     try {
-      const [data, debts] = await Promise.all([
+      const [data, debts, creditCards] = await Promise.all([
         API.getPatrimonio(),
-        API.getDebts()
+        API.getDebts(),
+        API.getCreditCards()
       ]);
-      renderFull(container, data, debts);
+      renderFull(container, data, debts, creditCards);
     } catch (e) {
       container.innerHTML = `
         <div class="empty-state">
@@ -35,7 +36,7 @@ const Patrimonio = (() => {
     `;
   }
 
-  function renderFull(container, data, debts) {
+  function renderFull(container, data, debts, creditCards) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
@@ -46,7 +47,9 @@ const Patrimonio = (() => {
     const carValue  = data?.carValue   ?? profile.carValue ?? 50000;
     const savings   = data?.savings    ?? 0;
     const investments = data?.investments ?? 0;
-    const totalDebt = debts?.reduce((s, d) => s + (d.balance || 0), 0) ?? profile.debtTotal ?? 14000;
+    const debtFromDebts = debts?.reduce((s, d) => s + (d.balance || 0), 0) || 0;
+    const debtFromCards = creditCards?.reduce((s, c) => s + (c.currentBalance || 0), 0) || 0;
+    const totalDebt = debtFromDebts + debtFromCards || profile.debtTotal || 0;
 
     const totalAssets      = fgts + carValue + savings + investments;
     const netWorth         = totalAssets - totalDebt;
@@ -60,8 +63,8 @@ const Patrimonio = (() => {
       <!-- Net Worth Hero -->
       <div class="section-header">
         <div>
-          <div class="section-title">Garage</div>
-          <div class="section-subtitle">Your total patrimônio</div>
+          <div class="section-title">Net Worth</div>
+          <div class="section-subtitle">Total patrimônio</div>
         </div>
         <button class="btn btn-secondary btn-sm" onclick="Patrimonio.edit()">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -152,7 +155,7 @@ const Patrimonio = (() => {
             <div class="asset-icon" style="background:var(--bg-primary);border:1px dashed var(--border)">📈</div>
             <div class="asset-info">
               <div class="asset-name">Investments</div>
-              <div class="asset-sub">Not started yet — see Grand Prix simulator</div>
+              <div class="asset-sub">Not started yet — use Simulator to project growth</div>
             </div>
             <div class="asset-value" style="color:var(--text-muted)">R$ 0</div>
           </div>` : ''}
@@ -163,10 +166,10 @@ const Patrimonio = (() => {
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
           <span class="card-title">Liabilities</span>
-          <button class="btn btn-ghost btn-sm" onclick="Patrimonio.editDebts()">Manage</button>
+          <button class="btn btn-ghost btn-sm" onclick="App.navigate('accounts')">Manage</button>
         </div>
         <div class="asset-list" id="debts-list">
-          ${renderDebts(debts, totalDebt, profile)}
+          ${renderDebts(debts, creditCards, totalDebt, profile)}
         </div>
       </div>
 
@@ -221,40 +224,73 @@ const Patrimonio = (() => {
         }).join('')}
       </div>
 
-      <!-- Update patrimônio modal trigger -->
-      <div id="patrimonio-edit-modal" class="hidden">
-        <!-- Populated dynamically -->
+      <!-- Financial Simulator link -->
+      <div class="card" style="margin-bottom:var(--space-md);cursor:pointer" onclick="App.navigate('simulator')">
+        <div style="display:flex;align-items:center;gap:var(--space-md)">
+          <div class="asset-icon blue">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:15px">Financial Simulator</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Retirement, debt payoff, salary & emergency projections</div>
+          </div>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
       </div>
     `;
 
     drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt);
   }
 
-  function renderDebts(debts, totalDebt, profile) {
-    if (!debts || debts.length === 0) {
-      // Fall back to simple total display
-      return `
+  function renderDebts(debts, creditCards, totalDebt, profile) {
+    let html = '';
+
+    // Show credit cards from the accounts system
+    if (creditCards && creditCards.length > 0) {
+      html += creditCards.filter(c => c.currentBalance > 0).map(c => `
+        <div class="asset-item">
+          <div class="asset-icon red">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <div class="asset-info">
+            <div class="asset-name">${c.name || 'Credit Card'}</div>
+            <div class="asset-sub">${c.interestRate ? c.interestRate + '% a.m.' : ''}${c.minPayment ? ' · Min: ' + Fmt.currency(c.minPayment) : ''}${c.limit ? ' · Limit: ' + Fmt.compact(c.limit) : ''}</div>
+          </div>
+          <div class="asset-value negative">${Fmt.currency(c.currentBalance)}</div>
+        </div>
+      `).join('');
+    }
+
+    // Show legacy debts
+    if (debts && debts.length > 0) {
+      html += debts.map(d => `
         <div class="asset-item">
           <div class="asset-icon red">💳</div>
           <div class="asset-info">
-            <div class="asset-name">Credit Card Debt (multiple)</div>
-            <div class="asset-sub">Tap "Manage" to add individual cards</div>
+            <div class="asset-name">${d.name || 'Debt'}</div>
+            <div class="asset-sub">${d.interestRate ? d.interestRate + '% a.m.' : ''}</div>
           </div>
-          <div class="asset-value negative">${Fmt.currency(totalDebt || profile.debtTotal || 14000)}</div>
+          <div class="asset-value negative">${Fmt.currency(d.balance)}</div>
+        </div>
+      `).join('');
+    }
+
+    if (!html) {
+      return `
+        <div class="asset-item" style="opacity:0.5">
+          <div class="asset-icon red">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <div class="asset-info">
+            <div class="asset-name">No debt tracked</div>
+            <div class="asset-sub">Add credit cards in Accounts tab</div>
+          </div>
+          <div class="asset-value" style="color:var(--text-muted)">R$ 0</div>
         </div>
       `;
     }
 
-    return debts.map(d => `
-      <div class="asset-item">
-        <div class="asset-icon red">💳</div>
-        <div class="asset-info">
-          <div class="asset-name">${d.name || 'Credit Card'}</div>
-          <div class="asset-sub">${d.interestRate ? d.interestRate + '% a.m.' : ''} ${d.minPayment ? '· Min: ' + Fmt.currency(d.minPayment) : ''}</div>
-        </div>
-        <div class="asset-value negative">${Fmt.currency(d.balance)}</div>
-      </div>
-    `).join('');
+    return html;
   }
 
   function drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt) {
@@ -356,7 +392,7 @@ const Patrimonio = (() => {
   }
 
   function editDebts() {
-    App.toast('Add/edit debts directly in the "Debts" tab of your Google Sheet, then refresh.', 'info', 5000);
+    App.navigate('accounts');
   }
 
   return { render, edit, saveEdit, editDebts };

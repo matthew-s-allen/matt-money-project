@@ -10,7 +10,8 @@ const App = (() => {
     activeView: 'dashboard',
     activeMonth: Fmt.currentMonthKey(),
     isOnline: navigator.onLine,
-    isLoading: false
+    isLoading: false,
+    theme: 'claude' // 'claude' or 'dark'
   };
 
   // ── Category definitions ──────────────────────────────────
@@ -31,6 +32,17 @@ const App = (() => {
 
   function getCat(id) {
     return CATEGORIES.find(c => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
+  }
+
+  // ── Theme ─────────────────────────────────────────────────
+  function setTheme(theme) {
+    state.theme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    Store.ui.set({ theme });
+  }
+
+  function toggleTheme() {
+    setTheme(state.theme === 'dark' ? 'claude' : 'dark');
   }
 
   // ── Navigation ─────────────────────────────────────────────
@@ -59,7 +71,14 @@ const App = (() => {
   }
 
   function renderView(view) {
-    const views = { dashboard: Dashboard, add: AddTransaction, transactions: Transactions, simulator: Simulator, patrimonio: Patrimonio };
+    const views = {
+      dashboard: Dashboard,
+      add: AddTransaction,
+      transactions: Transactions,
+      accounts: Accounts,
+      simulator: Simulator,
+      patrimonio: Patrimonio
+    };
     if (views[view] && views[view].render) {
       views[view].render();
     }
@@ -101,7 +120,7 @@ const App = (() => {
   function nextMonth() {
     const [y, m] = state.activeMonth.split('-').map(Number);
     const now = new Date();
-    if (y === now.getFullYear() && m === now.getMonth() + 1) return; // don't go future
+    if (y === now.getFullYear() && m === now.getMonth() + 1) return;
     const d = new Date(y, m, 1);
     setMonth(Fmt.monthKey(d));
   }
@@ -116,7 +135,7 @@ const App = (() => {
     document.getElementById('settings-salary').value      = profile.salary || '';
     document.getElementById('settings-fgts').value        = profile.fgts || '';
     document.getElementById('settings-car-value').value   = profile.carValue || '';
-    document.getElementById('settings-debt-total').value  = profile.debtTotal || '';
+    document.getElementById('settings-theme').value       = state.theme;
 
     document.getElementById('app-version').textContent = `Matt Money ${VERSION}`;
     document.getElementById('settings-modal').classList.remove('hidden');
@@ -128,6 +147,7 @@ const App = (() => {
 
   function saveSettings() {
     const geminiKey = document.getElementById('settings-gemini-key').value.trim();
+    const theme = document.getElementById('settings-theme').value;
 
     if (geminiKey) Store.config.set({ geminiKey });
 
@@ -135,10 +155,10 @@ const App = (() => {
       name:      document.getElementById('settings-name').value.trim() || 'Matthew',
       salary:    Number(document.getElementById('settings-salary').value) || 7500,
       fgts:      Number(document.getElementById('settings-fgts').value) || 68000,
-      carValue:  Number(document.getElementById('settings-car-value').value) || 50000,
-      debtTotal: Number(document.getElementById('settings-debt-total').value) || 14000
+      carValue:  Number(document.getElementById('settings-car-value').value) || 50000
     });
 
+    setTheme(theme);
     Store.cache.invalidateAll();
     closeSettings();
     toast('Settings saved', 'success');
@@ -151,12 +171,23 @@ const App = (() => {
     const content = document.getElementById('tx-detail-content');
     const cat = getCat(tx.category);
 
+    // Get account/card name
+    let paymentSource = '';
+    if (tx.accountId) {
+      const accounts = Store.data.getAccounts();
+      const cards = Store.data.getCreditCards();
+      const acct = accounts.find(a => a.id === tx.accountId);
+      const card = cards.find(c => c.id === tx.accountId);
+      if (acct) paymentSource = acct.name;
+      else if (card) paymentSource = card.name;
+    }
+
     content.innerHTML = `
       <div class="modal-handle"></div>
       <div style="display:flex;align-items:center;gap:var(--space-md);margin-bottom:var(--space-lg)">
         <div class="tx-icon" style="width:52px;height:52px;font-size:24px">${cat.emoji}</div>
         <div>
-          <div style="font-family:var(--font-display);font-size:20px;font-weight:700">${tx.description || tx.merchant}</div>
+          <div style="font-size:20px;font-weight:700">${tx.description || tx.merchant}</div>
           <div style="font-size:12px;color:var(--text-muted)">${Fmt.dateShort(tx.date)} · ${cat.label}</div>
         </div>
       </div>
@@ -166,6 +197,7 @@ const App = (() => {
         <div class="hero-value" style="color:${tx.type==='income'?'var(--green)':'var(--red)'}">${Fmt.currency(tx.amount)}</div>
       </div>
 
+      ${paymentSource ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Payment source</div><div class="tx-name">${paymentSource}</div></div></div>` : ''}
       ${tx.merchant ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Merchant</div><div class="tx-name">${tx.merchant}</div></div></div>` : ''}
       ${tx.notes ? `<div class="tx-item"><div class="tx-info"><div class="tx-meta">Notes</div><div class="tx-name">${tx.notes}</div></div></div>` : ''}
       ${tx.items && tx.items.length ? `
@@ -189,6 +221,16 @@ const App = (() => {
 
   function openEditTx(tx) {
     const content = document.getElementById('tx-detail-content');
+
+    // Build account/card options
+    const accounts = Store.data.getAccounts();
+    const cards = Store.data.getCreditCards();
+    const allSources = [
+      { id: '', label: 'No account linked' },
+      ...accounts.map(a => ({ id: a.id, label: `🏦 ${a.name}` })),
+      ...cards.map(c => ({ id: c.id, label: `💳 ${c.name}` }))
+    ];
+
     content.innerHTML = `
       <div class="modal-handle"></div>
       <h2 class="modal-title">Edit Transaction</h2>
@@ -213,6 +255,12 @@ const App = (() => {
       <div class="form-group">
         <label class="form-label">Date</label>
         <input type="date" id="edit-date" class="form-input" value="${tx.date || ''}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Account / Card</label>
+        <select id="edit-account" class="form-input">
+          ${allSources.map(s => `<option value="${s.id}" ${s.id === (tx.accountId || '') ? 'selected' : ''}>${s.label}</option>`).join('')}
+        </select>
       </div>
       <div class="form-group">
         <label class="form-label">Notes</label>
@@ -244,6 +292,7 @@ const App = (() => {
     const merchant    = document.getElementById('edit-merchant').value.trim();
     const date        = document.getElementById('edit-date').value;
     const notes       = document.getElementById('edit-notes').value.trim();
+    const accountId   = document.getElementById('edit-account').value || undefined;
     const selectedCat = document.querySelector('#tx-detail-content .cat-btn.selected');
     const category    = selectedCat ? selectedCat.dataset.cat : 'other';
     const type        = document.getElementById('edit-btn-income').className.includes('active-income') ? 'income' : 'expense';
@@ -254,7 +303,7 @@ const App = (() => {
     btn.disabled = true; btn.textContent = 'Saving...';
 
     try {
-      await API.updateTransaction(id, { type, amount, description: description || merchant, merchant, category, date, notes });
+      await API.updateTransaction(id, { type, amount, description: description || merchant, merchant, category, date, notes, accountId });
       document.getElementById('tx-detail-modal').classList.add('hidden');
       toast('Transaction updated', 'success');
       renderView(state.activeView);
@@ -279,13 +328,12 @@ const App = (() => {
   // ── Online / Offline handling ─────────────────────────────
   function handleOnline() {
     state.isOnline = true;
-    toast('Back online! Syncing...', 'success', 2000);
-    API.flushQueue().then(() => renderView(state.activeView));
+    toast('Back online!', 'success', 2000);
   }
 
   function handleOffline() {
     state.isOnline = false;
-    toast('You\'re offline. Entries will sync when reconnected.', 'info', 5000);
+    toast('You\'re offline. Changes are saved locally.', 'info', 5000);
   }
 
   // ── Init ──────────────────────────────────────────────────
@@ -298,6 +346,29 @@ const App = (() => {
     // Restore state
     const savedState  = Store.ui.get();
     state.activeMonth = savedState.activeMonth || Fmt.currentMonthKey();
+    state.theme = savedState.theme || 'claude';
+
+    // Apply theme
+    setTheme(state.theme);
+
+    // Check if setup needed
+    if (!Store.data.isSetupDone()) {
+      showSetupWizard();
+      return;
+    }
+
+    showApp();
+  }
+
+  function showSetupWizard() {
+    document.getElementById('setup-wizard').classList.remove('hidden');
+    document.getElementById('app-shell').classList.add('hidden');
+    SetupWizard.init();
+  }
+
+  function showApp() {
+    document.getElementById('setup-wizard').classList.add('hidden');
+    document.getElementById('app-shell').classList.remove('hidden');
 
     // Update header month
     const monthDisplay = document.getElementById('header-month-display');
@@ -312,6 +383,13 @@ const App = (() => {
     document.getElementById('settings-btn').addEventListener('click', openSettings);
     document.getElementById('settings-cancel-btn').addEventListener('click', closeSettings);
     document.getElementById('settings-save-btn').addEventListener('click', saveSettings);
+    document.getElementById('theme-toggle-btn').addEventListener('click', toggleTheme);
+
+    // Re-run setup
+    document.getElementById('settings-rerun-setup').addEventListener('click', () => {
+      closeSettings();
+      showSetupWizard();
+    });
 
     // Export / Import
     document.getElementById('settings-export-btn').addEventListener('click', () => {
@@ -363,15 +441,16 @@ const App = (() => {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Service worker update detection — toast when new version available
+    // Service worker update
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        toast('App updated! Pull down to refresh for the latest version.', 'info', 8000);
+        toast('App updated! Refresh for the latest version.', 'info', 8000);
       });
     }
 
     // Navigate to saved or default view
-    navigate(savedState.activeView || 'dashboard');
+    const savedView = Store.ui.get().activeView || 'dashboard';
+    navigate(savedView);
 
     // Flush any queued offline items
     if (navigator.onLine) API.flushQueue().catch(() => {});
@@ -390,10 +469,203 @@ const App = (() => {
     saveEditTx,
     confirmDeleteTx,
     openSettings,
+    showApp,
+    showSetupWizard,
+    setTheme,
+    toggleTheme,
     CATEGORIES,
     getCat,
     VERSION
   };
+})();
+
+/* ============================================================
+   SETUP WIZARD — First-time onboarding
+   ============================================================ */
+
+const SetupWizard = (() => {
+  let currentStep = 1;
+  let accounts = [];
+  let cards = [];
+
+  function init() {
+    currentStep = 1;
+
+    // Pre-populate with existing data if re-running
+    accounts = Store.data.getAccounts();
+    cards = Store.data.getCreditCards();
+
+    if (accounts.length === 0) {
+      accounts.push({ name: '', bank: '', type: 'checking', balance: 0 });
+    }
+    if (cards.length === 0) {
+      cards.push({ name: '', brand: '', limit: 0, currentBalance: 0 });
+    }
+
+    // Pre-fill profile
+    const profile = Store.profile.get();
+    document.getElementById('setup-name').value = profile.name || '';
+    document.getElementById('setup-salary').value = profile.salary || '';
+
+    renderAccounts();
+    renderCards();
+    showStep(1);
+  }
+
+  function showStep(step) {
+    currentStep = step;
+    for (let i = 1; i <= 3; i++) {
+      document.getElementById(`setup-step-${i}`).classList.toggle('hidden', i !== step);
+      const dot = document.querySelector(`.setup-step-dot[data-step="${i}"]`);
+      if (dot) {
+        dot.classList.toggle('active', i <= step);
+        dot.classList.toggle('done', i < step);
+      }
+    }
+  }
+
+  function next(fromStep) {
+    if (fromStep === 1) {
+      const name = document.getElementById('setup-name').value.trim();
+      const salary = Number(document.getElementById('setup-salary').value) || 0;
+      Store.profile.set({ name: name || 'Matthew', salary: salary || 7500 });
+    }
+    if (fromStep === 2) {
+      saveAccountsFromDOM();
+    }
+    showStep(fromStep + 1);
+  }
+
+  function back(fromStep) {
+    if (fromStep === 3) saveCardsFromDOM();
+    if (fromStep === 2) saveAccountsFromDOM();
+    showStep(fromStep - 1);
+  }
+
+  // ── Accounts management ────────────────────────────────────
+  function renderAccounts() {
+    const el = document.getElementById('setup-accounts-list');
+    el.innerHTML = accounts.map((a, i) => `
+      <div class="setup-account-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
+        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
+          <input type="text" class="form-input setup-acct-name" value="${a.name || ''}" placeholder="Account name" style="flex:1" />
+          <select class="form-input setup-acct-type" style="width:auto">
+            <option value="checking" ${a.type === 'checking' ? 'selected' : ''}>Checking</option>
+            <option value="savings" ${a.type === 'savings' ? 'selected' : ''}>Savings</option>
+            <option value="investment" ${a.type === 'investment' ? 'selected' : ''}>Investment</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:var(--space-sm);align-items:center">
+          <input type="text" class="form-input setup-acct-bank" value="${a.bank || ''}" placeholder="Bank name" style="flex:1" />
+          <div style="position:relative;flex:1">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:13px">R$</span>
+            <input type="number" class="form-input setup-acct-balance" value="${a.balance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" style="padding-left:32px" />
+          </div>
+          ${accounts.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeAccount(${i})" style="color:var(--red);padding:8px">✕</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function addAccount() {
+    saveAccountsFromDOM();
+    accounts.push({ name: '', bank: '', type: 'checking', balance: 0 });
+    renderAccounts();
+  }
+
+  function removeAccount(idx) {
+    saveAccountsFromDOM();
+    accounts.splice(idx, 1);
+    renderAccounts();
+  }
+
+  function saveAccountsFromDOM() {
+    const rows = document.querySelectorAll('.setup-account-row');
+    accounts = Array.from(rows).map((row, i) => ({
+      ...(accounts[i]?.id ? { id: accounts[i].id } : {}),
+      name: row.querySelector('.setup-acct-name').value.trim(),
+      bank: row.querySelector('.setup-acct-bank').value.trim(),
+      type: row.querySelector('.setup-acct-type').value,
+      balance: parseFloat(row.querySelector('.setup-acct-balance').value) || 0
+    }));
+  }
+
+  // ── Cards management ──────────────────────────────────────
+  function renderCards() {
+    const el = document.getElementById('setup-cards-list');
+    el.innerHTML = cards.map((c, i) => `
+      <div class="setup-card-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
+        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
+          <input type="text" class="form-input setup-card-name" value="${c.name || ''}" placeholder="Card name (e.g. Nubank)" style="flex:1" />
+          <input type="text" class="form-input setup-card-brand" value="${c.brand || ''}" placeholder="Brand" style="width:100px" />
+        </div>
+        <div style="display:flex;gap:var(--space-sm);align-items:center">
+          <div style="position:relative;flex:1">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">Limit</span>
+            <input type="number" class="form-input setup-card-limit" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" style="padding-left:42px" />
+          </div>
+          <div style="position:relative;flex:1">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">Bill</span>
+            <input type="number" class="form-input setup-card-balance" value="${c.currentBalance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" style="padding-left:30px" />
+          </div>
+          ${cards.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeCard(${i})" style="color:var(--red);padding:8px">✕</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function addCard() {
+    saveCardsFromDOM();
+    cards.push({ name: '', brand: '', limit: 0, currentBalance: 0 });
+    renderCards();
+  }
+
+  function removeCard(idx) {
+    saveCardsFromDOM();
+    cards.splice(idx, 1);
+    renderCards();
+  }
+
+  function saveCardsFromDOM() {
+    const rows = document.querySelectorAll('.setup-card-row');
+    cards = Array.from(rows).map((row, i) => ({
+      ...(cards[i]?.id ? { id: cards[i].id } : {}),
+      name: row.querySelector('.setup-card-name').value.trim(),
+      brand: row.querySelector('.setup-card-brand').value.trim(),
+      limit: parseFloat(row.querySelector('.setup-card-limit').value) || 0,
+      currentBalance: parseFloat(row.querySelector('.setup-card-balance').value) || 0
+    }));
+  }
+
+  // ── Finish ─────────────────────────────────────────────────
+  async function finish() {
+    saveCardsFromDOM();
+
+    // Save valid accounts
+    const validAccounts = accounts.filter(a => a.name);
+    for (const a of validAccounts) {
+      await API.upsertAccount(a);
+    }
+
+    // Save valid cards and calculate total debt
+    const validCards = cards.filter(c => c.name);
+    let totalDebt = 0;
+    for (const c of validCards) {
+      await API.upsertCreditCard(c);
+      totalDebt += c.currentBalance || 0;
+    }
+
+    // Update profile debt total from cards
+    if (totalDebt > 0) {
+      Store.profile.set({ debtTotal: totalDebt });
+    }
+
+    Store.data.setSetupDone(true);
+    App.showApp();
+    App.toast('Setup complete! Start tracking your finances.', 'success');
+  }
+
+  return { init, next, back, addAccount, removeAccount, addCard, removeCard, finish };
 })();
 
 // ── Start ──────────────────────────────────────────────────

@@ -306,6 +306,50 @@ Critical extraction rules:
     });
   }
 
+  // ── Accounts ─────────────────────────────────────────────
+
+  async function getAccounts() {
+    return Store.data.getAccounts();
+  }
+
+  async function upsertAccount(account) {
+    const accounts = Store.data.getAccounts();
+    const idx = accounts.findIndex(a => a.id === account.id);
+    const entry = { ...account, id: account.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
+    if (idx >= 0) accounts[idx] = entry; else accounts.push(entry);
+    Store.data.setAccounts(accounts);
+    Store.cache.invalidateAll();
+    return { data: entry, success: true };
+  }
+
+  async function deleteAccount(id) {
+    Store.data.setAccounts(Store.data.getAccounts().filter(a => a.id !== id));
+    Store.cache.invalidateAll();
+    return { success: true };
+  }
+
+  // ── Credit Cards ────────────────────────────────────────
+
+  async function getCreditCards() {
+    return Store.data.getCreditCards();
+  }
+
+  async function upsertCreditCard(card) {
+    const cards = Store.data.getCreditCards();
+    const idx = cards.findIndex(c => c.id === card.id);
+    const entry = { ...card, id: card.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
+    if (idx >= 0) cards[idx] = entry; else cards.push(entry);
+    Store.data.setCreditCards(cards);
+    Store.cache.invalidateAll();
+    return { data: entry, success: true };
+  }
+
+  async function deleteCreditCard(id) {
+    Store.data.setCreditCards(Store.data.getCreditCards().filter(c => c.id !== id));
+    Store.cache.invalidateAll();
+    return { success: true };
+  }
+
   // ── Compatibility stubs (no-ops since data is always local) ──
 
   async function flushQueue()  { return; }
@@ -318,6 +362,8 @@ Critical extraction rules:
     getPatrimonio, updatePatrimonio,
     getCategories,
     getSalaryMilestones, saveSalaryMilestones,
+    getAccounts, upsertAccount, deleteAccount,
+    getCreditCards, upsertCreditCard, deleteCreditCard,
     parseReceiptWithGemini,
     exportData, importData,
     flushQueue, initBackend

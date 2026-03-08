@@ -16,6 +16,23 @@ const AddTransaction = (() => {
   // Safe HTML attribute escaping for user-supplied data in template literals
   const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
+  function buildAccountOptions() {
+    const accounts = Store.data.getAccounts();
+    const cards = Store.data.getCreditCards();
+    let html = '<option value="">Select account or card</option>';
+    if (accounts.length) {
+      html += '<optgroup label="Bank Accounts">';
+      accounts.forEach(a => { html += `<option value="${a.id}">${a.name}${a.bank ? ' (' + a.bank + ')' : ''}</option>`; });
+      html += '</optgroup>';
+    }
+    if (cards.length) {
+      html += '<optgroup label="Credit Cards">';
+      cards.forEach(c => { html += `<option value="${c.id}">${c.name}${c.brand ? ' (' + c.brand + ')' : ''}</option>`; });
+      html += '</optgroup>';
+    }
+    return html;
+  }
+
   function render() {
     const container = document.getElementById('view-add');
     state = { type: 'expense', category: 'food', imageBase64: null, imageMime: null, aiSuggestion: null, editedItems: [], isScanning: false };
@@ -23,7 +40,7 @@ const AddTransaction = (() => {
     container.innerHTML = `
       <div class="section-header">
         <div>
-          <div class="section-title">Quick Add</div>
+          <div class="section-title">Add Transaction</div>
           <div class="section-subtitle">Log income or expense</div>
         </div>
       </div>
@@ -85,6 +102,13 @@ const AddTransaction = (() => {
         <div class="form-group">
           <label class="form-label">Date</label>
           <input type="date" id="tx-date" class="form-input" value="${Fmt.toISODate(new Date())}" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Account / Card</label>
+          <select id="tx-account" class="form-input">
+            ${buildAccountOptions()}
+          </select>
         </div>
 
         <div class="form-group">
@@ -427,6 +451,7 @@ const AddTransaction = (() => {
     const merchant    = document.getElementById('tx-merchant').value.trim();
     const date        = document.getElementById('tx-date').value;
     const notes       = document.getElementById('tx-notes').value.trim();
+    const accountId   = document.getElementById('tx-account')?.value || undefined;
 
     if (!amount || amount <= 0) {
       App.toast('Please enter an amount', 'error');
@@ -458,6 +483,8 @@ const AddTransaction = (() => {
       notes,
       // Line items (uses card-edited version if present, falls back to raw AI, then empty)
       items: state.editedItems.length > 0 ? state.editedItems : (ai.items || []),
+      // Account / card linkage
+      ...(accountId && { accountId }),
       // Rich receipt metadata — only stored when present
       ...(ai.payment_method  && { payment_method:  ai.payment_method  }),
       ...(ai.store_cnpj      && { store_cnpj:       ai.store_cnpj      }),
