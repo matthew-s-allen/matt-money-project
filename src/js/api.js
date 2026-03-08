@@ -163,58 +163,98 @@ const API = (() => {
 
   // ── Gemini AI (receipt / note parsing) ────────────────────
 
+  // Model waterfall: best reasoning first, lightweight safety net last.
+  // Falls back automatically on rate-limit (429), unavailability (503),
+  // or model-not-found (404) errors — only fails if all models are exhausted.
+  const GEMINI_MODELS = [
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+  ];
+
+  // Strict JSON schema passed directly to the API — no prompt-engineering guesswork.
+  const RECEIPT_SCHEMA = {
+    type: 'object',
+    properties: {
+      merchant:    { type: 'string' },
+      date:        { type: 'string', description: 'YYYY-MM-DD' },
+      total:       { type: 'number' },
+      category:    { type: 'string', enum: ['food','transport','housing','health','education','subscriptions','clothing','entertainment','debt','savings','other'] },
+      description: { type: 'string' },
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name:  { type: 'string' },
+            qty:   { type: 'number' },
+            price: { type: 'number' },
+          },
+          required: ['name', 'qty', 'price'],
+        },
+      },
+      type:       { type: 'string', enum: ['expense', 'income'] },
+      currency:   { type: 'string' },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+    },
+    required: ['merchant','date','total','category','description','items','type','currency','confidence'],
+  };
+
+  const RECEIPT_PROMPT = `You are a Brazilian financial assistant. Analyze this receipt, note, or financial document image and extract the structured data.
+Use today's date if the date is not visible. Default currency to BRL. Set confidence to "low" if the image is not a recognisable financial document.
+For handwritten notes, extract any financial information present.`;
+
   async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg') {
     const geminiKey = Store.config.val('geminiKey');
     if (!geminiKey) throw new Error('Gemini API key not set. Add it in Settings ⚙️ (it\'s free from aistudio.google.com).');
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
-
-    const prompt = `You are a Brazilian financial assistant. Analyze this receipt, note, or financial document image and extract the following information in JSON format.
-
-Return ONLY a valid JSON object with these fields:
-{
-  "merchant": "store or payee name (string)",
-  "date": "YYYY-MM-DD format (string, today if not visible)",
-  "total": "total amount in numbers only, no R$ symbol (number)",
-  "category": "one of: food, transport, housing, health, education, subscriptions, clothing, entertainment, debt, savings, other (string)",
-  "description": "brief description in English (string)",
-  "items": [{"name": "item name", "qty": 1, "price": 0.00}],
-  "type": "expense or income (string)",
-  "currency": "BRL",
-  "confidence": "high/medium/low (string)"
-}
-
-If this is a handwritten note, extract any financial information present.
-If the image is not a receipt or financial document, set confidence to "low" and fill what you can.`;
-
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mimeType, data: base64Image } }
-          ]
-        }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
-      })
+    const body = JSON.stringify({
+      contents: [{
+        parts: [
+          { text: RECEIPT_PROMPT },
+          { inline_data: { mime_type: mimeType, data: base64Image } },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 1024,
+        response_mime_type: 'application/json',
+        response_schema: RECEIPT_SCHEMA,
+      },
     });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(`Gemini error: ${err?.error?.message || res.statusText}`);
+    const FALLBACK_CODES = new Set([429, 503, 404]);
+    let lastError;
+
+    for (const model of GEMINI_MODELS) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+      let res;
+      try {
+        res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+      } catch (networkErr) {
+        lastError = networkErr;
+        continue;
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        lastError = new Error(`Gemini error (${model}): ${err?.error?.message || res.statusText}`);
+        if (FALLBACK_CODES.has(res.status)) continue; // try next model
+        throw lastError; // hard error (e.g. 400 bad request, 401 invalid key)
+      }
+
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      try {
+        return JSON.parse(text);
+      } catch {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) { lastError = new Error('Gemini returned unexpected format'); continue; }
+        return JSON.parse(jsonMatch[0]);
+      }
     }
 
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    try {
-      return JSON.parse(text);
-    } catch {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error('Gemini returned unexpected format');
-      return JSON.parse(jsonMatch[0]);
-    }
+    throw lastError || new Error('All Gemini models failed');
   }
 
   // ── Export / Import ───────────────────────────────────────
