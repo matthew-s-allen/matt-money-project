@@ -197,7 +197,7 @@ If the image is not a receipt or financial document, set confidence to "low" and
             { inline_data: { mime_type: mimeType, data: base64Image } }
           ]
         }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024, responseMimeType: 'application/json' }
       })
     });
 
