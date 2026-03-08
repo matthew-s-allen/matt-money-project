@@ -58,8 +58,8 @@ const Transactions = (() => {
       <!-- Header -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-md)">
         <div>
-          <div class="section-title">Race History</div>
-          <div class="section-subtitle">Transactions & product tracker</div>
+          <div class="section-title">Transactions</div>
+          <div class="section-subtitle">History & product tracker</div>
         </div>
         <div class="month-nav">
           <button onclick="App.prevMonth()">

@@ -112,8 +112,8 @@ const Simulator = (() => {
     container.innerHTML = `
       <div class="section-header">
         <div>
-          <div class="section-title">Grand Prix</div>
-          <div class="section-subtitle">Financial future simulator</div>
+          <div class="section-title">Simulator</div>
+          <div class="section-subtitle">Financial projections</div>
         </div>
       </div>
 
@@ -246,7 +246,7 @@ const Simulator = (() => {
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
           <span class="card-title">Growth Trajectory</span>
-          <span class="pill pill-red">F1 Data</span>
+          <span class="pill pill-blue">Projection</span>
         </div>
         <div class="chart-wrap" style="height:240px">
           <canvas id="retirement-chart"></canvas>
@@ -255,7 +255,7 @@ const Simulator = (() => {
 
       <!-- Targets to R$500k and R$1.5M -->
       <div class="card" style="margin-bottom:var(--space-md)">
-        <div class="card-title" style="margin-bottom:var(--space-md)">Race to Targets 🏁</div>
+        <div class="card-title" style="margin-bottom:var(--space-md)">Progress to Targets</div>
         ${[500000, 1000000, 1500000].map(target => {
           const moderate = results[1].data;
           const hitYear = moderate.findIndex(d => d.total >= target);
@@ -466,7 +466,7 @@ const Simulator = (() => {
           At 15% CDI, <strong>R$ 14,000 invested for 20 years = ${Fmt.compact(compound(14000, 0, 14.75, 240))}</strong>.
           Pay off debt first — it's your highest-yield "investment".
         </p>
-        <div class="pill pill-red">🏎️ Your debt is your #1 obstacle. Attack it like a pit stop.</div>
+        <div class="pill pill-red">Debt is your #1 obstacle. Prioritize paying it off.</div>
       </div>
     `;
 
@@ -627,7 +627,7 @@ const Simulator = (() => {
       </div>
 
       <button class="btn btn-primary btn-full" onclick="Simulator.saveMilestones()" style="margin-bottom:var(--space-xl)">
-        Save Career Plan to Sheet
+        Save Career Plan
       </button>
     `;
 
@@ -685,7 +685,7 @@ const Simulator = (() => {
     App.toast('Saving career plan...', 'info', 2000);
     try {
       await API.saveSalaryMilestones(milestones);
-      App.toast('Career plan saved to Google Sheet!', 'success');
+      App.toast('Career plan saved!', 'success');
     } catch (e) {
       App.toast('Error saving: ' + e.message, 'error');
     }
@@ -808,13 +808,13 @@ const Simulator = (() => {
       </div>
 
       <div class="pill pill-green" style="margin-bottom:var(--space-xl)">
-        🏎️ You have a solid safety net. Focus on eliminating debt to maximize your runway.
+        You have a solid safety net. Focus on eliminating debt to maximize your runway.
       </div>
     `;
   }
 
   function addMilestone() {
-    App.toast('Milestone editor coming soon — edit directly in your Google Sheet for now!', 'info');
+    App.toast('Milestone editor coming soon!', 'info');
   }
 
   return { render, setTab, updateRetirement, updateDebt, addMilestone, saveMilestones };

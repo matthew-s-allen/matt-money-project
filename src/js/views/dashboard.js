@@ -1,5 +1,5 @@
 /* ============================================================
-   DASHBOARD VIEW — "Pit Lane" — Financial telemetry overview
+   DASHBOARD VIEW — Financial overview
    ============================================================ */
 
 const Dashboard = (() => {
@@ -7,25 +7,31 @@ const Dashboard = (() => {
   let summary = null;
   let history = null;
 
-  // ── Chart defaults ─────────────────────────────────────────
   const CHART_DEFAULTS = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#141414',
-        borderColor: '#333',
-        borderWidth: 1,
-        titleColor: '#fff',
-        bodyColor: '#a0a0a0',
         padding: 12,
-        cornerRadius: 8
+        cornerRadius: 10
       }
     }
   };
 
-  // ── Build skeleton while loading ───────────────────────────
+  function getChartColors() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    return {
+      tooltip: isDark
+        ? { backgroundColor: '#141414', borderColor: '#333', borderWidth: 1, titleColor: '#fff', bodyColor: '#a0a0a0' }
+        : { backgroundColor: '#fff', borderColor: '#e5e5e7', borderWidth: 1, titleColor: '#1a1a2e', bodyColor: '#6b7280' },
+      grid: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+      tick: isDark ? '#666' : '#9ca3af',
+      axis: isDark ? '#222' : '#e5e5e7',
+      line: isDark ? '#fff' : '#1a1a2e'
+    };
+  }
+
   function renderSkeleton() {
     return `
       <div class="skeleton" style="height:28px;width:60%;margin-bottom:var(--space-md)"></div>
@@ -38,67 +44,63 @@ const Dashboard = (() => {
     `;
   }
 
-  // ── Main render ────────────────────────────────────────────
   async function render() {
     const container = document.getElementById('view-dashboard');
     container.innerHTML = renderSkeleton();
 
     try {
-      const [s, h] = await Promise.all([
+      const [s, h, accounts, cards] = await Promise.all([
         API.getSummary(App.state.activeMonth),
-        API.getMonthlyHistory(6)
+        API.getMonthlyHistory(6),
+        API.getAccounts(),
+        API.getCreditCards()
       ]);
       summary = s;
       history = h;
-      renderFull(container, s, h);
+      renderFull(container, s, h, accounts, cards);
     } catch (e) {
-      container.innerHTML = renderError(e.message);
+      container.innerHTML = `
+        <div class="empty-state">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <h3>Error</h3>
+          <p>${e.message}</p>
+          <button class="btn btn-primary btn-sm" onclick="Dashboard.render()">Retry</button>
+        </div>
+      `;
     }
   }
 
-  function renderError(msg) {
-    return `
-      <div class="empty-state">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-        <h3>Connection Error</h3>
-        <p>${msg}</p>
-        <button class="btn btn-primary btn-sm" onclick="Dashboard.render()">Retry</button>
-      </div>
-    `;
-  }
-
-  function renderFull(container, s, h) {
-    // Destroy old charts
+  function renderFull(container, s, h, accounts, cards) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
-    const profile = Store.profile.get();
     const income   = s.totalIncome   || 0;
     const expenses = s.totalExpenses || 0;
     const balance  = income - expenses;
     const savingsRate = income > 0 ? ((income - expenses) / income * 100) : 0;
     const cats = s.byCategory || {};
 
-    // Sector status (F1 sector colors)
-    const getSector = (rate) => {
-      if (rate >= 30) return { label: 'P1', color: 'var(--green)', class: 'pill-green' };
-      if (rate >= 15) return { label: 'P3', color: 'var(--yellow)', class: 'pill-yellow' };
-      return { label: 'DNF Risk', color: 'var(--red)', class: 'pill-red' };
+    const getStatus = (rate) => {
+      if (rate >= 30) return { label: 'Great', color: 'var(--green)', class: 'pill-green' };
+      if (rate >= 15) return { label: 'OK', color: 'var(--yellow)', class: 'pill-yellow' };
+      return { label: 'Over budget', color: 'var(--red)', class: 'pill-red' };
     };
-    const sector = getSector(savingsRate);
+    const status = getStatus(savingsRate);
 
-    // Month navigation
     const now = new Date();
     const [y, m] = App.state.activeMonth.split('-').map(Number);
     const isCurrentMonth = y === now.getFullYear() && m === now.getMonth() + 1;
+
+    const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+    const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
 
     container.innerHTML = `
       <!-- Month Nav -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-md)">
         <div class="section-header" style="margin-bottom:0">
           <div>
-            <div class="section-title">Pit Lane</div>
-            <div class="section-subtitle">Financial telemetry</div>
+            <div class="section-title">Dashboard</div>
+            <div class="section-subtitle">Monthly overview</div>
           </div>
         </div>
         <div class="month-nav">
@@ -116,15 +118,14 @@ const Dashboard = (() => {
       <div class="hero-card" style="margin-bottom:var(--space-md)">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-sm)">
           <div class="hero-label">Monthly Balance</div>
-          <span class="pill ${sector.class}">${sector.label} · ${Fmt.percent(savingsRate)}</span>
+          <span class="pill ${status.class}">${status.label} · ${Fmt.percent(savingsRate)}</span>
         </div>
         <div class="hero-value" style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.currency(balance)}</div>
 
-        <!-- Income / Expense bar -->
         <div style="margin-bottom:var(--space-sm)">
           <div class="seg-bar">
             <div class="seg-bar-piece" style="background:var(--green);width:${income > 0 ? Math.min(100, expenses/income*100) : 100}%"></div>
-            <div style="flex:1;background:var(--bg-secondary)"></div>
+            <div style="flex:1;background:var(--bg-input)"></div>
           </div>
         </div>
 
@@ -139,12 +140,28 @@ const Dashboard = (() => {
           </div>
           <div class="stat-block" style="text-align:right">
             <div class="stat-label">Save rate</div>
-            <div class="stat-value" style="font-size:18px;color:${sector.color}">${Fmt.percent(savingsRate)}</div>
+            <div class="stat-value" style="font-size:18px;color:${status.color}">${Fmt.percent(savingsRate)}</div>
           </div>
         </div>
       </div>
 
-      <!-- Quick stats row -->
+      <!-- Account balances -->
+      ${(accounts.length > 0 || cards.length > 0) ? `
+      <div class="grid-2" style="margin-bottom:var(--space-md)">
+        <div class="card" style="cursor:pointer" onclick="App.navigate('accounts')">
+          <div class="card-title">Bank Balance</div>
+          <div class="stat-value positive" style="font-size:20px;margin-top:var(--space-sm)">${Fmt.compact(totalBankBalance)}</div>
+          <div class="t-muted" style="margin-top:4px">${accounts.length} account${accounts.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="App.navigate('accounts')">
+          <div class="card-title">Card Balance</div>
+          <div class="stat-value negative" style="font-size:20px;margin-top:var(--space-sm)">${Fmt.compact(totalCardBalance)}</div>
+          <div class="t-muted" style="margin-top:4px">${cards.length} card${cards.length !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- Quick stats -->
       <div class="grid-2" style="margin-bottom:var(--space-md)">
         <div class="card" style="cursor:pointer" onclick="App.navigate('transactions')">
           <div class="card-title">Transactions</div>
@@ -158,7 +175,7 @@ const Dashboard = (() => {
         </div>
       </div>
 
-      <!-- Spending by category (telemetry bars) -->
+      <!-- Spending by category -->
       ${Object.keys(cats).length > 0 ? `
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
@@ -169,11 +186,10 @@ const Dashboard = (() => {
       </div>
       ` : ''}
 
-      <!-- 6-month spend/income chart -->
+      <!-- 6-month trend -->
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
           <span class="card-title">6-Month Trend</span>
-          <span class="pill pill-blue">Race Chart</span>
         </div>
         <div class="chart-wrap" style="height:180px">
           <canvas id="trend-chart"></canvas>
@@ -212,13 +228,10 @@ const Dashboard = (() => {
       </div>
     `;
 
-    // Render telemetry bars
     if (Object.keys(cats).length > 0) {
       renderTelemetry(cats, expenses);
       renderDonut(cats);
     }
-
-    // Render trend chart
     renderTrendChart(h);
   }
 
@@ -240,27 +253,21 @@ const Dashboard = (() => {
     const el = document.getElementById('cat-telemetry');
     if (!el) return;
 
-    const sorted = Object.entries(cats)
-      .sort(([,a],[,b]) => b - a)
-      .slice(0, 6);
-
+    const sorted = Object.entries(cats).sort(([,a],[,b]) => b - a).slice(0, 6);
     el.innerHTML = sorted.map(([catId, amount]) => {
       const cat = App.getCat(catId);
       const pct = totalExpenses > 0 ? (amount / totalExpenses * 100) : 0;
       return `
         <div class="telemetry-item">
           <div class="telemetry-header">
-            <div class="telemetry-name">
-              <span>${cat.emoji}</span>
-              <span>${cat.label}</span>
-            </div>
+            <div class="telemetry-name"><span>${cat.emoji}</span><span>${cat.label}</span></div>
             <div class="telemetry-amounts">
               <span class="telemetry-spent">${Fmt.currency(amount)}</span>
               <span>${Fmt.percent(pct)}</span>
             </div>
           </div>
           <div class="progress-bar-wrap">
-            <div class="progress-bar-fill red" style="width:${pct}%;background:${cat.color}"></div>
+            <div class="progress-bar-fill" style="width:${pct}%;background:${cat.color}"></div>
           </div>
         </div>
       `;
@@ -277,6 +284,7 @@ const Dashboard = (() => {
     const data   = sorted.map(([,v]) => v);
     const colors = sorted.map(([id]) => App.getCat(id).color);
     const total  = data.reduce((a,b) => a+b, 0);
+    const cc = getChartColors();
 
     if (charts.donut) charts.donut.destroy();
     charts.donut = new Chart(canvas, {
@@ -288,10 +296,8 @@ const Dashboard = (() => {
       options: {
         ...CHART_DEFAULTS,
         cutout: '72%',
-        plugins: { ...CHART_DEFAULTS.plugins, tooltip: { ...CHART_DEFAULTS.plugins.tooltip,
-          callbacks: {
-            label: ctx => ` ${Fmt.currency(ctx.raw)} (${(ctx.raw/total*100).toFixed(0)}%)`
-          }
+        plugins: { ...CHART_DEFAULTS.plugins, tooltip: { ...cc.tooltip, padding: 12, cornerRadius: 10,
+          callbacks: { label: ctx => ` ${Fmt.currency(ctx.raw)} (${(ctx.raw/total*100).toFixed(0)}%)` }
         }}
       }
     });
@@ -313,8 +319,9 @@ const Dashboard = (() => {
     if (!canvas || !h || !h.length) return;
 
     const labels   = h.map(m => Fmt.monthShort(m.month + '-01'));
-    const incomes   = h.map(m => m.income || 0);
-    const expenses  = h.map(m => m.expenses || 0);
+    const incomes  = h.map(m => m.income || 0);
+    const expenses = h.map(m => m.expenses || 0);
+    const cc = getChartColors();
 
     if (charts.trend) charts.trend.destroy();
     charts.trend = new Chart(canvas, {
@@ -325,29 +332,29 @@ const Dashboard = (() => {
           {
             label: 'Income',
             data: incomes,
-            backgroundColor: 'rgba(57,211,83,0.5)',
-            borderColor: 'rgba(57,211,83,0.8)',
+            backgroundColor: 'rgba(34,197,94,0.4)',
+            borderColor: 'rgba(34,197,94,0.7)',
             borderWidth: 1,
-            borderRadius: 4,
+            borderRadius: 6,
             order: 2
           },
           {
             label: 'Expenses',
             data: expenses,
-            backgroundColor: 'rgba(232,0,45,0.5)',
-            borderColor: 'rgba(232,0,45,0.8)',
+            backgroundColor: 'rgba(239,68,68,0.4)',
+            borderColor: 'rgba(239,68,68,0.7)',
             borderWidth: 1,
-            borderRadius: 4,
+            borderRadius: 6,
             order: 3
           },
           {
             label: 'Balance',
             data: h.map(m => (m.income||0) - (m.expenses||0)),
             type: 'line',
-            borderColor: '#fff',
+            borderColor: cc.line,
             backgroundColor: 'transparent',
             borderWidth: 2,
-            pointBackgroundColor: '#fff',
+            pointBackgroundColor: cc.line,
             pointRadius: 3,
             tension: 0.3,
             order: 1
@@ -357,31 +364,13 @@ const Dashboard = (() => {
       options: {
         ...CHART_DEFAULTS,
         scales: {
-          x: {
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: { color: '#666', font: { family: 'Inter', size: 11 } },
-            border: { color: '#222' }
-          },
-          y: {
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: {
-              color: '#666',
-              font: { family: 'Inter', size: 11 },
-              callback: v => Fmt.compact(v)
-            },
-            border: { color: '#222' }
-          }
+          x: { grid: { color: cc.grid }, ticks: { color: cc.tick, font: { family: 'Inter', size: 11 } }, border: { color: cc.axis } },
+          y: { grid: { color: cc.grid }, ticks: { color: cc.tick, font: { family: 'Inter', size: 11 }, callback: v => Fmt.compact(v) }, border: { color: cc.axis } }
         },
         plugins: {
           ...CHART_DEFAULTS.plugins,
-          legend: {
-            display: true,
-            position: 'top',
-            align: 'end',
-            labels: { color: '#666', font: { size: 11 }, boxWidth: 12, padding: 12 }
-          },
-          tooltip: {
-            ...CHART_DEFAULTS.plugins.tooltip,
+          legend: { display: true, position: 'top', align: 'end', labels: { color: cc.tick, font: { size: 11 }, boxWidth: 12, padding: 12 } },
+          tooltip: { ...cc.tooltip, padding: 12, cornerRadius: 10,
             callbacks: { label: ctx => ` ${ctx.dataset.label}: ${Fmt.currency(ctx.raw)}` }
           }
         }

@@ -69,16 +69,31 @@ const Store = (() => {
     getMilestones()       { return raw.get('data_milestones', DEFAULT_MILESTONES); },
     setMilestones(v)      { raw.set('data_milestones', v); },
 
+    // ── Accounts (bank accounts) ───────────────────────────────
+    getAccounts()         { return raw.get('data_accounts', []); },
+    setAccounts(v)        { raw.set('data_accounts', v); },
+
+    // ── Credit Cards ───────────────────────────────────────────
+    getCreditCards()      { return raw.get('data_credit_cards', []); },
+    setCreditCards(v)     { raw.set('data_credit_cards', v); },
+
+    // ── Setup completed flag ───────────────────────────────────
+    isSetupDone()         { return raw.get('setup_done', false); },
+    setSetupDone(v)       { raw.set('setup_done', v); },
+
     // Export everything as a single JSON blob
     exportAll() {
       return {
-        version: 2,
+        version: 3,
         exportedAt: new Date().toISOString(),
         transactions: data.getTransactions(),
         debts:        data.getDebts(),
         patrimonio:   data.getPatrimonio(),
         categories:   data.getCategories(),
-        milestones:   data.getMilestones()
+        milestones:   data.getMilestones(),
+        accounts:     data.getAccounts(),
+        creditCards:  data.getCreditCards(),
+        setupDone:    data.isSetupDone()
       };
     },
 
@@ -90,6 +105,9 @@ const Store = (() => {
       if (blob.patrimonio)   data.setPatrimonio(blob.patrimonio);
       if (blob.categories)   data.setCategories(blob.categories);
       if (blob.milestones)   data.setMilestones(blob.milestones);
+      if (blob.accounts)     data.setAccounts(blob.accounts);
+      if (blob.creditCards)  data.setCreditCards(blob.creditCards);
+      if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
     }
   };
 
