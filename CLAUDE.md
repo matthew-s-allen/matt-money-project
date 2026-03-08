@@ -77,3 +77,34 @@ apps-script/MattMoney.gs    — Optional Google Sheets backend (not required)
 - Add new views to both `index.html` (script tag + HTML container) and `app.js` (navigate function)
 - New localStorage keys: always use `Store.raw.get/set` with the `mm_` prefix handled automatically
 - When adding API functions, follow the pattern in `api.js` and call `Store.cache.invalidateAll()` on mutations
+
+## Current Feature Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Setup Wizard | **Built** (basic) | 3 steps: profile, accounts, cards. Needs expansion to 6 steps — see VISION.md |
+| Transaction Tracking | **Built** | Full CRUD, categories, account linkage, search, filters |
+| AI Receipt Scanning | **Built** | Gemini with 3-model fallback, line items, barcodes, NF-e keys |
+| Dashboard | **Built** | Monthly summary, charts, category breakdown, 6-month trends |
+| Account Management | **Built** | Bank accounts + credit cards with balances and limits |
+| Credit Card Tracking | **Partial** | Has limit/balance/closing day/due day. Missing: per-month bill amounts, debt trajectory, installment tracking |
+| Net Worth (Patrimônio) | **Built** (basic) | FGTS, car, savings, investments, debt ratio. Missing: property, historical trends |
+| Simulator | **Built** | 4 tabs: retirement, debt payoff, salary plan, if-fired. Functional with compound growth |
+| Cash Flow Engine | **Planned** | Monthly planning view to replace Google Sheets — see VISION.md Phase 2 |
+| Income Intelligence | **Planned** | CLT deductions, holerite scanning, planned vs actual — see VISION.md Phase 4 |
+| Investment Planning | **Planned** | Allocation tracking, card-as-debit mode — see VISION.md Phase 5 |
+| BI Data Export | **Planned** | Structured CSV exports for dashboards — see VISION.md Phase 6 |
+| Theming & PWA | **Built** | Dual theme, service worker, offline support, manifest |
+| Data Export/Import | **Built** | JSON backup v3 format |
+
+## Key Design Principles
+
+- **Effortless data entry** — AI-first (receipt scanning, holerite scanning, bill import). Minimize manual typing.
+- **Everything in one place** — Replace the Google Sheets workflow entirely. Every financial data point lives here.
+- **Brazil/CLT-first** — FGTS, 13º salário, INSS/IRRF, adiantamento, férias are first-class concepts.
+- **Projections drive behavior** — Always show the future impact of today's decisions.
+- **localStorage-only core** — No backend required. Works offline, instantly responsive.
+
+## Product Vision
+
+See **[VISION.md](VISION.md)** for the complete product roadmap, Matthew's financial strategy goals ("Live on the 15th"), phased feature plan, data model extensions, and design principles that govern all future work.
