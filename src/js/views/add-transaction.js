@@ -50,7 +50,7 @@ const AddTransaction = (() => {
         </div>
 
         <div class="camera-zone" id="camera-zone" onclick="document.getElementById('file-input').click()">
-          <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" />
+          <input type="file" id="file-input" accept="image/*" style="display:none" />
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
           <p>Tap to take a photo or upload receipt</p>
           <small>Gemini AI will read merchant, items & total</small>

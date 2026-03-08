@@ -106,19 +106,17 @@ const App = (() => {
 
   // ── Settings ──────────────────────────────────────────────
   function openSettings() {
-    const modal = document.getElementById('settings-modal');
-    const cfg = Store.config.get();
+    const cfg     = Store.config.get();
     const profile = Store.profile.get();
 
-    document.getElementById('settings-script-url').value = cfg.scriptUrl || '';
-    document.getElementById('settings-gemini-key').value = cfg.geminiKey || '';
-    document.getElementById('settings-name').value = profile.name || '';
-    document.getElementById('settings-salary').value = profile.salary || '';
-    document.getElementById('settings-fgts').value = profile.fgts || '';
-    document.getElementById('settings-car-value').value = profile.carValue || '';
-    document.getElementById('settings-debt-total').value = profile.debtTotal || '';
+    document.getElementById('settings-gemini-key').value  = cfg.geminiKey || '';
+    document.getElementById('settings-name').value        = profile.name || '';
+    document.getElementById('settings-salary').value      = profile.salary || '';
+    document.getElementById('settings-fgts').value        = profile.fgts || '';
+    document.getElementById('settings-car-value').value   = profile.carValue || '';
+    document.getElementById('settings-debt-total').value  = profile.debtTotal || '';
 
-    modal.classList.remove('hidden');
+    document.getElementById('settings-modal').classList.remove('hidden');
   }
 
   function closeSettings() {
@@ -126,27 +124,22 @@ const App = (() => {
   }
 
   function saveSettings() {
-    const scriptUrl = document.getElementById('settings-script-url').value.trim();
     const geminiKey = document.getElementById('settings-gemini-key').value.trim();
 
-    if (!scriptUrl || !geminiKey) {
-      toast('Please fill in both Apps Script URL and Gemini API key', 'error');
-      return;
-    }
+    if (geminiKey) Store.config.set({ geminiKey });
 
-    Store.config.set({ scriptUrl, geminiKey });
     Store.profile.set({
-      name: document.getElementById('settings-name').value.trim() || 'Matthew',
-      salary: Number(document.getElementById('settings-salary').value) || 7500,
-      fgts: Number(document.getElementById('settings-fgts').value) || 68000,
-      carValue: Number(document.getElementById('settings-car-value').value) || 50000,
+      name:      document.getElementById('settings-name').value.trim() || 'Matthew',
+      salary:    Number(document.getElementById('settings-salary').value) || 7500,
+      fgts:      Number(document.getElementById('settings-fgts').value) || 68000,
+      carValue:  Number(document.getElementById('settings-car-value').value) || 50000,
       debtTotal: Number(document.getElementById('settings-debt-total').value) || 14000
     });
 
     Store.cache.invalidateAll();
     closeSettings();
-    toast('Settings saved. Refreshing data...', 'success');
-    setTimeout(() => renderView(state.activeView), 500);
+    toast('Settings saved', 'success');
+    setTimeout(() => renderView(state.activeView), 300);
   }
 
   // ── Transaction detail modal ──────────────────────────────
@@ -214,42 +207,6 @@ const App = (() => {
     toast('You\'re offline. Entries will sync when reconnected.', 'info', 5000);
   }
 
-  // ── Setup screen ──────────────────────────────────────────
-  function showSetupScreen() {
-    document.getElementById('setup-screen').classList.remove('hidden');
-    document.getElementById('app-shell').classList.add('hidden');
-  }
-
-  function showAppShell() {
-    document.getElementById('setup-screen').classList.add('hidden');
-    document.getElementById('app-shell').classList.remove('hidden');
-  }
-
-  function initSetupScreen() {
-    document.getElementById('setup-save-btn').addEventListener('click', () => {
-      const scriptUrl = document.getElementById('setup-script-url').value.trim();
-      const geminiKey = document.getElementById('setup-gemini-key').value.trim();
-
-      if (!scriptUrl || !geminiKey) {
-        toast('Please fill in both fields', 'error');
-        return;
-      }
-
-      Store.config.set({ scriptUrl, geminiKey });
-
-      // Try to init backend
-      API.initBackend()
-        .then(() => {
-          toast('Backend connected successfully!', 'success');
-          showAppShell();
-          navigate('dashboard');
-        })
-        .catch(e => {
-          toast(`Connection error: ${e.message}`, 'error');
-        });
-    });
-  }
-
   // ── Init ──────────────────────────────────────────────────
   function init() {
     // Register service worker
@@ -258,17 +215,8 @@ const App = (() => {
     }
 
     // Restore state
-    const savedState = Store.ui.get();
+    const savedState  = Store.ui.get();
     state.activeMonth = savedState.activeMonth || Fmt.currentMonthKey();
-
-    // Check if configured
-    if (!Store.config.isSetup()) {
-      showSetupScreen();
-      initSetupScreen();
-      return;
-    }
-
-    showAppShell();
 
     // Update header month
     const monthDisplay = document.getElementById('header-month-display');
@@ -283,6 +231,25 @@ const App = (() => {
     document.getElementById('settings-btn').addEventListener('click', openSettings);
     document.getElementById('settings-cancel-btn').addEventListener('click', closeSettings);
     document.getElementById('settings-save-btn').addEventListener('click', saveSettings);
+
+    // Export / Import
+    document.getElementById('settings-export-btn').addEventListener('click', () => {
+      try { API.exportData(); toast('Backup downloaded', 'success'); }
+      catch(e) { toast('Export failed: ' + e.message, 'error'); }
+    });
+    document.getElementById('settings-import-file').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      try {
+        await API.importData(file);
+        toast('Data imported successfully', 'success');
+        closeSettings();
+        renderView(state.activeView);
+      } catch(err) {
+        toast('Import failed: ' + err.message, 'error');
+      }
+      e.target.value = '';
+    });
 
     // Modal close on overlay click
     document.getElementById('settings-modal').addEventListener('click', (e) => {
