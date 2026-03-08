@@ -18,61 +18,10 @@
 </head>
 <body>
 
-<!-- ── Setup / Onboarding screen ──────────────────────────── -->
-<div id="setup-screen" class="setup-screen hidden">
-  <div class="setup-logo">M</div>
-  <h1 class="setup-title">Matt <span style="color:var(--red)">Money</span></h1>
-  <p class="setup-subtitle">Your personal financial command center. Let's connect your data backend to get started.</p>
-
-  <div class="setup-steps">
-    <div class="setup-step">
-      <div class="setup-step-num">1</div>
-      <div class="setup-step-info">
-        <h4>Create your Google Sheet</h4>
-        <p>Go to sheets.google.com and create a new blank spreadsheet. Copy its ID from the URL.</p>
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="setup-step-num">2</div>
-      <div class="setup-step-info">
-        <h4>Deploy the Apps Script backend</h4>
-        <p>Follow SETUP.md to paste the backend code and deploy it as a Web App. Copy the deployment URL.</p>
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="setup-step-num">3</div>
-      <div class="setup-step-info">
-        <h4>Get a free Gemini API key</h4>
-        <p>Go to aistudio.google.com → Get API key. It's free for personal use — no extra cost.</p>
-      </div>
-    </div>
-    <div class="setup-step">
-      <div class="setup-step-num">4</div>
-      <div class="setup-step-info">
-        <h4>Enter your details below</h4>
-        <p>Paste your Apps Script URL and Gemini API key to activate the app.</p>
-      </div>
-    </div>
-  </div>
-
-  <div class="w-full" style="max-width:400px; display:flex; flex-direction:column; gap:var(--space-md);">
-    <div class="form-group">
-      <label class="form-label">Apps Script Web App URL</label>
-      <input type="url" id="setup-script-url" class="form-input" placeholder="https://script.google.com/macros/s/..." />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Gemini API Key (free from AI Studio)</label>
-      <input type="password" id="setup-gemini-key" class="form-input" placeholder="AIza..." />
-    </div>
-    <button id="setup-save-btn" class="btn btn-primary btn-full">
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
-      Activate Command Center
-    </button>
-  </div>
-</div>
+<!-- setup-screen intentionally removed — app opens immediately, no setup required -->
 
 <!-- ── Main App Shell ──────────────────────────────────────── -->
-<div id="app-shell" class="app-shell hidden">
+<div id="app-shell" class="app-shell">
 
   <!-- Header -->
   <header class="app-header">
@@ -129,17 +78,16 @@
 
 <!-- ── Settings Modal ──────────────────────────────────────── -->
 <div id="settings-modal" class="modal-overlay hidden">
-  <div class="modal-sheet" style="max-height:80dvh">
+  <div class="modal-sheet" style="max-height:85dvh;overflow-y:auto">
     <div class="modal-handle"></div>
     <h2 class="modal-title">Settings</h2>
 
+    <div class="divider-text">AI Receipt Scanning (optional)</div>
     <div class="form-group">
-      <label class="form-label">Apps Script URL</label>
-      <input type="url" id="settings-script-url" class="form-input" placeholder="https://script.google.com/macros/s/..." />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Gemini API Key</label>
-      <input type="password" id="settings-gemini-key" class="form-input" placeholder="AIza..." />
+      <label class="form-label">Gemini API Key
+        <span style="font-weight:400;color:var(--text-secondary)"> — free from aistudio.google.com</span>
+      </label>
+      <input type="password" id="settings-gemini-key" class="form-input" placeholder="AIza..." autocomplete="off" />
     </div>
 
     <div class="divider-text" style="margin-top:var(--space-lg)">Your Profile</div>
@@ -168,6 +116,20 @@
     <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
       <button class="btn btn-secondary" id="settings-cancel-btn" style="flex:1">Cancel</button>
       <button class="btn btn-primary" id="settings-save-btn" style="flex:1">Save</button>
+    </div>
+
+    <div class="divider-text" style="margin-top:var(--space-xl)">Data Backup</div>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:var(--space-md)">
+      Your data lives on this device. Export regularly so you never lose it.
+    </p>
+    <div style="display:flex;gap:var(--space-md)">
+      <button class="btn btn-secondary" id="settings-export-btn" style="flex:1">
+        ↓ Export backup
+      </button>
+      <label class="btn btn-secondary" style="flex:1;cursor:pointer;text-align:center">
+        ↑ Import backup
+        <input type="file" id="settings-import-file" accept=".json" style="display:none" />
+      </label>
     </div>
   </div>
 </div>
