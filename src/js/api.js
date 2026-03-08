@@ -167,7 +167,7 @@ const API = (() => {
     const geminiKey = Store.config.val('geminiKey');
     if (!geminiKey) throw new Error('Gemini API key not set. Add it in Settings ⚙️ (it\'s free from aistudio.google.com).');
 
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
 
     const prompt = `You are a Brazilian financial assistant. Analyze this receipt, note, or financial document image and extract the following information in JSON format.
 
@@ -197,7 +197,8 @@ If the image is not a receipt or financial document, set confidence to "low" and
             { inline_data: { mime_type: mimeType, data: base64Image } }
           ]
         }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 }
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+        thinkingConfig: { thinkingBudget: 0 }
       })
     });
 
@@ -207,7 +208,11 @@ If the image is not a receipt or financial document, set confidence to "low" and
     }
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // gemini-2.5-flash is a thinking model: parts[0] may be a "thought" blob, not the answer.
+    // Find the first non-thought part that has text.
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+    const textPart = parts.find(p => !p.thought && p.text != null) || parts[0];
+    const text = textPart?.text || '';
     try {
       return JSON.parse(text);
     } catch {
