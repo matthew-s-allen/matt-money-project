@@ -49,15 +49,16 @@ const Dashboard = (() => {
     container.innerHTML = renderSkeleton();
 
     try {
-      const [s, h, accounts, cards] = await Promise.all([
+      const [s, h, accounts, cards, categories] = await Promise.all([
         API.getSummary(App.state.activeMonth),
         API.getMonthlyHistory(6),
         API.getAccounts(),
-        API.getCreditCards()
+        API.getCreditCards(),
+        API.getCategories()
       ]);
       summary = s;
       history = h;
-      renderFull(container, s, h, accounts, cards);
+      renderFull(container, s, h, accounts, cards, categories);
     } catch (e) {
       container.innerHTML = `
         <div class="empty-state">
@@ -70,7 +71,7 @@ const Dashboard = (() => {
     }
   }
 
-  function renderFull(container, s, h, accounts, cards) {
+  function renderFull(container, s, h, accounts, cards, categories) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
@@ -186,6 +187,9 @@ const Dashboard = (() => {
       </div>
       ` : ''}
 
+      <!-- Budget Progress -->
+      ${renderBudgetSection(cats, categories)}
+
       <!-- 6-month trend -->
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
@@ -235,13 +239,68 @@ const Dashboard = (() => {
     renderTrendChart(h);
   }
 
+  function renderBudgetSection(cats, categories) {
+    if (!categories || !categories.length) return '';
+    // Build budget items: only categories with a budget > 0 and either spending or budget defined
+    const budgetItems = categories
+      .filter(c => c.budget > 0 && c.active !== false)
+      .map(c => {
+        const spent = cats[c.id] || 0;
+        const pct = c.budget > 0 ? (spent / c.budget * 100) : 0;
+        return { ...c, spent, pct };
+      })
+      .sort((a, b) => b.pct - a.pct); // worst budget adherence first
+
+    if (!budgetItems.length) return '';
+
+    const totalBudget = budgetItems.reduce((s, b) => s + b.budget, 0);
+    const totalSpent = budgetItems.reduce((s, b) => s + b.spent, 0);
+    const overallPct = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
+    const overBudgetCount = budgetItems.filter(b => b.pct > 100).length;
+
+    return `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header">
+          <span class="card-title">Budget Progress</span>
+          <span class="pill ${overallPct > 100 ? 'pill-red' : overallPct > 75 ? 'pill-yellow' : 'pill-green'}">${Fmt.percent(overallPct)} used</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--space-sm)">
+          <span style="font-size:12px;color:var(--text-muted)">${Fmt.currency(totalSpent)} of ${Fmt.currency(totalBudget)}</span>
+          ${overBudgetCount > 0 ? `<span style="font-size:11px;color:var(--red);font-weight:600">${overBudgetCount} over budget</span>` : ''}
+        </div>
+        <div class="progress-bar-wrap" style="margin-bottom:var(--space-md)">
+          <div class="progress-bar-fill" style="width:${Math.min(100, overallPct)}%;background:${overallPct > 100 ? 'var(--red)' : overallPct > 75 ? 'var(--yellow)' : 'var(--green)'}"></div>
+        </div>
+        ${budgetItems.map(b => {
+          const barColor = b.pct > 100 ? 'var(--red)' : b.pct > 75 ? 'var(--yellow)' : b.color;
+          const remaining = Math.max(0, b.budget - b.spent);
+          return `
+            <div style="margin-bottom:var(--space-sm)">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px">
+                <span style="font-size:12px;font-weight:500">${b.emoji} ${b.label}</span>
+                <span style="font-size:11px;font-family:var(--font-mono);color:${b.pct > 100 ? 'var(--red)' : 'var(--text-secondary)'}">${Fmt.currency(b.spent)} / ${Fmt.currency(b.budget)}</span>
+              </div>
+              <div class="progress-bar-wrap" style="height:4px">
+                <div class="progress-bar-fill" style="width:${Math.min(100, b.pct)}%;background:${barColor}"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:1px">
+                <span style="font-size:10px;color:var(--text-muted)">${Fmt.percent(b.pct)}</span>
+                <span style="font-size:10px;color:${b.pct > 100 ? 'var(--red)' : 'var(--text-muted)'}">${b.pct > 100 ? 'Over by ' + Fmt.currency(b.spent - b.budget) : Fmt.currency(remaining) + ' left'}</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
   function renderTxItem(tx) {
     const cat = App.getCat(tx.category);
     return `
-      <div class="tx-item" onclick="App.openTxDetail(${JSON.stringify(tx).replace(/"/g, '&quot;')})">
+      <div class="tx-item" onclick="App.openTxDetail('${App.esc(tx.id)}')">
         <div class="tx-icon">${cat.emoji}</div>
         <div class="tx-info">
-          <div class="tx-name">${tx.description || tx.merchant || 'Transaction'}</div>
+          <div class="tx-name">${App.esc(tx.description || tx.merchant || 'Transaction')}</div>
           <div class="tx-meta">${Fmt.relativeDate(tx.date)} · ${cat.label}</div>
         </div>
         <div class="tx-amount ${tx.type === 'income' ? 'income' : 'expense'}">${tx.type === 'income' ? '+' : '-'}${Fmt.currency(tx.amount)}</div>

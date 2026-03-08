@@ -7,6 +7,19 @@ const Simulator = (() => {
   let activeTab = 'retirement';
   let milestones = [];
 
+  function getChartColors() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    return {
+      grid: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+      tick: isDark ? '#666' : '#9ca3af',
+      axis: isDark ? '#222' : '#e5e5e7',
+      tooltip: isDark
+        ? { backgroundColor: '#141414', borderColor: '#333', borderWidth: 1, titleColor: '#fff', bodyColor: '#a0a0a0' }
+        : { backgroundColor: '#fff', borderColor: '#e5e5e7', borderWidth: 1, titleColor: '#1a1a2e', bodyColor: '#6b7280' },
+      legendText: isDark ? '#666' : '#9ca3af'
+    };
+  }
+
   // ── Default simulation params ──────────────────────────────
   function getParams() {
     const profile = Store.profile.get();
@@ -264,7 +277,7 @@ const Simulator = (() => {
             <div class="race-progress" style="margin-bottom:var(--space-md)">
               <div style="display:flex;justify-content:space-between;margin-bottom:var(--space-sm)">
                 <span style="font-family:var(--font-display);font-size:15px;font-weight:600">${Fmt.compact(target)}</span>
-                <span style="font-size:12px;color:var(--text-muted)">${hitData ? `✅ Year ${hitData.year} (${2025 + hitData.year})` : '> 20 years'}</span>
+                <span style="font-size:12px;color:var(--text-muted)">${hitData ? `✅ Year ${hitData.year} (${new Date().getFullYear() + hitData.year})` : '> 20 years'}</span>
               </div>
               <div class="race-track">
                 <div class="race-car" style="width:${hitData ? Math.min(100, (hitData.year / 20) * 100) : 100}%"></div>
@@ -319,8 +332,10 @@ const Simulator = (() => {
   function drawRetirementChart(results, years) {
     const canvas = document.getElementById('retirement-chart');
     if (!canvas) return;
+    const cc = getChartColors();
 
-    const labels = Array.from({length: years}, (_, i) => `${2025 + i + 1}`);
+    const baseYear = new Date().getFullYear();
+    const labels = Array.from({length: years}, (_, i) => `${baseYear + i + 1}`);
 
     if (charts.retirement) charts.retirement.destroy();
     charts.retirement = new Chart(canvas, {
@@ -354,34 +369,18 @@ const Simulator = (() => {
             display: true,
             position: 'top',
             align: 'end',
-            labels: { color: '#666', font: { size: 11 }, boxWidth: 24, padding: 12 }
+            labels: { color: cc.legendText, font: { size: 11 }, boxWidth: 24, padding: 12 }
           },
           tooltip: {
-            backgroundColor: '#141414',
-            borderColor: '#333',
-            borderWidth: 1,
-            titleColor: '#fff',
-            bodyColor: '#a0a0a0',
+            ...cc.tooltip,
             padding: 12,
             cornerRadius: 8,
             callbacks: { label: ctx => ` ${ctx.dataset.label}: ${Fmt.compact(ctx.raw)}` }
           }
         },
         scales: {
-          x: {
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: { color: '#666', font: { size: 11 }, maxTicksLimit: 8 },
-            border: { color: '#222' }
-          },
-          y: {
-            grid: { color: 'rgba(255,255,255,0.04)' },
-            ticks: {
-              color: '#666',
-              font: { size: 11 },
-              callback: v => Fmt.compact(v)
-            },
-            border: { color: '#222' }
-          }
+          x: { grid: { color: cc.grid }, ticks: { color: cc.tick, font: { size: 11 }, maxTicksLimit: 8 }, border: { color: cc.axis } },
+          y: { grid: { color: cc.grid }, ticks: { color: cc.tick, font: { size: 11 }, callback: v => Fmt.compact(v) }, border: { color: cc.axis } }
         }
       }
     });
@@ -583,7 +582,7 @@ const Simulator = (() => {
           ${defaultMilestones.map((ms, i) => `
             <div class="timeline-item" id="ms-${i}">
               <div class="timeline-dot ${i === 0 ? 'active' : ''}"></div>
-              <div class="timeline-label">Year ${ms.year} (${2025 + ms.year})</div>
+              <div class="timeline-label">Year ${ms.year} (${new Date().getFullYear() + ms.year})</div>
               <div class="timeline-title">${ms.event}</div>
               <div class="timeline-value">${Fmt.currency(ms.salary)} / month</div>
             </div>
@@ -640,7 +639,7 @@ const Simulator = (() => {
 
     const years  = Array.from({length: 15}, (_, i) => 2026 + i);
     const salaries = years.map(yr => {
-      const year = yr - 2025;
+      const year = yr - new Date().getFullYear();
       let sal = 7500;
       milestones.forEach(ms => { if (ms.year <= year) sal = ms.salary; });
       return sal;
@@ -792,7 +791,7 @@ const Simulator = (() => {
             return `
               <div class="telemetry-item">
                 <div class="telemetry-header">
-                  <div class="telemetry-name">Year ${yr} (${2025+yr})</div>
+                  <div class="telemetry-name">Year ${yr} (${new Date().getFullYear()+yr})</div>
                   <div class="telemetry-amounts">
                     <span class="telemetry-spent">${Fmt.compact(projFgts + multa)}</span>
                     <span>with multa</span>

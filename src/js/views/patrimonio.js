@@ -334,6 +334,7 @@ const Patrimonio = (() => {
 
   function edit() {
     const profile = Store.profile.get();
+    const patrimonio = Store.data.getPatrimonio();
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
@@ -351,11 +352,11 @@ const Patrimonio = (() => {
         </div>
         <div class="form-group">
           <label class="form-label">Liquid savings (R$)</label>
-          <input type="number" id="edit-savings" class="form-input" placeholder="0" />
+          <input type="number" id="edit-savings" class="form-input" value="${patrimonio.savings || ''}" placeholder="0" />
         </div>
         <div class="form-group">
           <label class="form-label">Investments (R$)</label>
-          <input type="number" id="edit-investments" class="form-input" placeholder="0" />
+          <input type="number" id="edit-investments" class="form-input" value="${patrimonio.investments || ''}" placeholder="0" />
         </div>
 
         <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
