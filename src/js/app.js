@@ -138,14 +138,24 @@ const App = (() => {
     const cfg     = Store.config.get();
     const profile = Store.profile.get();
 
-    document.getElementById('settings-gemini-key').value    = cfg.geminiKey || '';
-    document.getElementById('settings-name').value          = profile.name || '';
-    document.getElementById('settings-salary').value        = profile.salary || '';
-    document.getElementById('settings-savings-goal').value  = profile.savingsGoal || '';
-    document.getElementById('settings-target-years').value  = profile.targetYears || '';
-    document.getElementById('settings-fgts').value          = profile.fgts || '';
-    document.getElementById('settings-car-value').value     = profile.carValue || '';
-    document.getElementById('settings-theme').value         = state.theme;
+    document.getElementById('settings-gemini-key').value       = cfg.geminiKey || '';
+    document.getElementById('settings-name').value             = profile.name || '';
+    document.getElementById('settings-salary').value           = profile.salary || '';
+    document.getElementById('settings-savings-goal').value     = profile.savingsGoal || '';
+    document.getElementById('settings-target-years').value     = profile.targetYears || '';
+    document.getElementById('settings-fgts').value             = profile.fgts || '';
+    document.getElementById('settings-car-value').value        = profile.carValue || '';
+    document.getElementById('settings-work-start').value       = profile.workStartDate || '';
+    document.getElementById('settings-vacation-days').value    = profile.vacationDaysTotal || 30;
+    document.getElementById('settings-vacation-sell').value    = profile.vacationDaysToSell || 0;
+    document.getElementById('settings-deduct-health').value    = profile.deductHealthPlan || '';
+    document.getElementById('settings-deduct-dental').value    = profile.deductDental || '';
+    document.getElementById('settings-deduct-vt').value        = profile.deductValeTransporte || '';
+    document.getElementById('settings-deduct-other').value     = profile.deductOther || '';
+    document.getElementById('settings-benefit-va').value       = profile.benefitVA || '';
+    document.getElementById('settings-benefit-vr').value       = profile.benefitVR || '';
+    document.getElementById('settings-benefit-other').value    = profile.benefitOther || '';
+    document.getElementById('settings-theme').value            = state.theme;
 
     // Backup account
     const acctName = Store.backup.getActiveAccount();
@@ -196,12 +206,22 @@ const App = (() => {
     Store.config.set({ geminiKey: geminiKey || '' });
 
     Store.profile.set({
-      name:        document.getElementById('settings-name').value.trim() || 'Matthew',
-      salary:      Number(document.getElementById('settings-salary').value) || 7500,
-      savingsGoal: Number(document.getElementById('settings-savings-goal').value) || 500000,
-      targetYears: Number(document.getElementById('settings-target-years').value) || 15,
-      fgts:        Number(document.getElementById('settings-fgts').value) || 68000,
-      carValue:    Number(document.getElementById('settings-car-value').value) || 50000
+      name:                document.getElementById('settings-name').value.trim() || 'Matthew',
+      salary:              Number(document.getElementById('settings-salary').value) || 7500,
+      savingsGoal:         Number(document.getElementById('settings-savings-goal').value) || 500000,
+      targetYears:         Number(document.getElementById('settings-target-years').value) || 15,
+      fgts:                Number(document.getElementById('settings-fgts').value) || 68000,
+      carValue:            Number(document.getElementById('settings-car-value').value) || 50000,
+      workStartDate:       document.getElementById('settings-work-start').value || '',
+      vacationDaysTotal:   Number(document.getElementById('settings-vacation-days').value) || 30,
+      vacationDaysToSell:  Number(document.getElementById('settings-vacation-sell').value) || 0,
+      deductHealthPlan:    Number(document.getElementById('settings-deduct-health').value) || 0,
+      deductDental:        Number(document.getElementById('settings-deduct-dental').value) || 0,
+      deductValeTransporte:Number(document.getElementById('settings-deduct-vt').value) || 0,
+      deductOther:         Number(document.getElementById('settings-deduct-other').value) || 0,
+      benefitVA:           Number(document.getElementById('settings-benefit-va').value) || 0,
+      benefitVR:           Number(document.getElementById('settings-benefit-vr').value) || 0,
+      benefitOther:        Number(document.getElementById('settings-benefit-other').value) || 0
     });
 
     // Save backup account name
@@ -684,7 +704,7 @@ const App = (() => {
    ============================================================ */
 
 const SetupWizard = (() => {
-  const TOTAL_STEPS = 5;
+  const TOTAL_STEPS = 6;
   let currentStep = 1;
   let accounts = [];
   let cards = [];
@@ -703,12 +723,25 @@ const SetupWizard = (() => {
       cards.push({ name: '', brand: '', limit: 0, currentBalance: 0 });
     }
 
-    // Pre-fill profile
+    // Pre-fill step 1: profile
     const profile = Store.profile.get();
     document.getElementById('setup-name').value = profile.name || '';
     document.getElementById('setup-salary').value = profile.salary || '';
+    document.getElementById('setup-work-start').value = profile.workStartDate || '';
 
-    // Pre-fill goals & assets (step 2)
+    // Pre-fill step 2: employment & salary
+    document.getElementById('setup-vacation-days').value = profile.vacationDaysTotal || 30;
+    document.getElementById('setup-vacation-periods').value = profile.vacationPeriods || 3;
+    document.getElementById('setup-vacation-sell').value = profile.vacationDaysToSell || 0;
+    document.getElementById('setup-deduct-health').value = profile.deductHealthPlan || '';
+    document.getElementById('setup-deduct-dental').value = profile.deductDental || '';
+    document.getElementById('setup-deduct-vt').value = profile.deductValeTransporte || '';
+    document.getElementById('setup-deduct-other').value = profile.deductOther || '';
+    document.getElementById('setup-benefit-va').value = profile.benefitVA || '';
+    document.getElementById('setup-benefit-vr').value = profile.benefitVR || '';
+    document.getElementById('setup-benefit-other').value = profile.benefitOther || '';
+
+    // Pre-fill step 3: goals & assets
     document.getElementById('setup-savings-goal').value = profile.savingsGoal || '';
     document.getElementById('setup-target-years').value = profile.targetYears || '';
     document.getElementById('setup-fgts').value = profile.fgts || '';
@@ -733,10 +766,75 @@ const SetupWizard = (() => {
       e.target.value = '';
     });
 
+    // Live salary preview - attach listeners to step 2 inputs
+    const salaryInputs = ['setup-deduct-health','setup-deduct-dental','setup-deduct-vt','setup-deduct-other',
+      'setup-benefit-va','setup-benefit-vr','setup-benefit-other','setup-vacation-sell'];
+    salaryInputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', updateSalaryPreview);
+    });
+
     renderAccounts();
     renderCards();
     renderCategories();
     showStep(1);
+  }
+
+  function updateSalaryPreview() {
+    const preview = document.getElementById('setup-salary-preview');
+    if (!preview) return;
+    const profile = Store.profile.get();
+    const gross = profile.salary || 0;
+    if (!gross) { preview.innerHTML = ''; return; }
+
+    const tempProfile = {
+      ...profile,
+      deductHealthPlan: Number(document.getElementById('setup-deduct-health').value) || 0,
+      deductDental: Number(document.getElementById('setup-deduct-dental').value) || 0,
+      deductValeTransporte: Number(document.getElementById('setup-deduct-vt').value) || 0,
+      deductOther: Number(document.getElementById('setup-deduct-other').value) || 0,
+      benefitVA: Number(document.getElementById('setup-benefit-va').value) || 0,
+      benefitVR: Number(document.getElementById('setup-benefit-vr').value) || 0,
+      benefitOther: Number(document.getElementById('setup-benefit-other').value) || 0,
+      vacationDaysToSell: Number(document.getElementById('setup-vacation-sell').value) || 0
+    };
+
+    const b = API.calcSalaryBreakdown(tempProfile);
+    preview.innerHTML = `
+      <div style="font-size:12px;font-weight:600;margin-bottom:var(--space-sm)">Salary Preview</div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+        <span>Gross salary</span><span>${Fmt.currency(b.gross)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px">
+        <span>INSS</span><span>-${Fmt.currency(b.inss)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px">
+        <span>IRRF</span><span>-${Fmt.currency(b.irrf)}</span>
+      </div>
+      ${b.healthPlan ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Health plan</span><span>-${Fmt.currency(b.healthPlan)}</span></div>` : ''}
+      ${b.dental ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Dental</span><span>-${Fmt.currency(b.dental)}</span></div>` : ''}
+      ${b.vt ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Vale Transporte</span><span>-${Fmt.currency(b.vt)}</span></div>` : ''}
+      ${b.otherDeduct ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Other deductions</span><span>-${Fmt.currency(b.otherDeduct)}</span></div>` : ''}
+      <div style="border-top:1px solid var(--border);margin:var(--space-sm) 0;padding-top:var(--space-sm);display:flex;justify-content:space-between;font-size:13px;font-weight:600">
+        <span>Net salary</span><span style="color:var(--green)">${Fmt.currency(b.netSalary)}</span>
+      </div>
+      ${b.totalBenefits > 0 ? `
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--blue);margin-bottom:2px">
+          <span>+ Benefits (VA/VR/other)</span><span>+${Fmt.currency(b.totalBenefits)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-top:4px">
+          <span>Total take-home</span><span style="color:var(--green)">${Fmt.currency(b.totalTakeHome)}</span>
+        </div>
+      ` : ''}
+      <div style="border-top:1px solid var(--border);margin-top:var(--space-sm);padding-top:var(--space-sm);font-size:11px;color:var(--text-muted)">
+        FGTS: ${Fmt.currency(b.fgtsMonthly)}/mo · 13th: ${Fmt.currency(b.decimoTerceiroNet)} net ·
+        Vacation bonus: ${Fmt.currency(b.vacationBonus)}
+        ${b.daysToSell > 0 ? ` · Sold ${b.daysToSell} days: ${Fmt.currency(b.abonoPecuniario)}` : ''}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+        Annual total: <strong style="color:var(--green)">${Fmt.currency(b.annualTotal)}</strong>
+      </div>
+    `;
   }
 
   function showStep(step) {
@@ -749,15 +847,33 @@ const SetupWizard = (() => {
         dot.classList.toggle('done', i < step);
       }
     }
+    // Show salary preview when entering step 2
+    if (step === 2) updateSalaryPreview();
   }
 
   function next(fromStep) {
     if (fromStep === 1) {
       const name = document.getElementById('setup-name').value.trim();
       const salary = Number(document.getElementById('setup-salary').value) || 0;
-      Store.profile.set({ name: name || 'Matthew', salary: salary || 7500 });
+      const workStartDate = document.getElementById('setup-work-start').value || '';
+      Store.profile.set({ name: name || 'Matthew', salary: salary || 7500, workStartDate });
     }
     if (fromStep === 2) {
+      // Save employment & salary details
+      Store.profile.set({
+        vacationDaysTotal:     Number(document.getElementById('setup-vacation-days').value) || 30,
+        vacationPeriods:       Number(document.getElementById('setup-vacation-periods').value) || 3,
+        vacationDaysToSell:    Number(document.getElementById('setup-vacation-sell').value) || 0,
+        deductHealthPlan:      Number(document.getElementById('setup-deduct-health').value) || 0,
+        deductDental:          Number(document.getElementById('setup-deduct-dental').value) || 0,
+        deductValeTransporte:  Number(document.getElementById('setup-deduct-vt').value) || 0,
+        deductOther:           Number(document.getElementById('setup-deduct-other').value) || 0,
+        benefitVA:             Number(document.getElementById('setup-benefit-va').value) || 0,
+        benefitVR:             Number(document.getElementById('setup-benefit-vr').value) || 0,
+        benefitOther:          Number(document.getElementById('setup-benefit-other').value) || 0
+      });
+    }
+    if (fromStep === 3) {
       // Save goals & assets
       Store.profile.set({
         savingsGoal: Number(document.getElementById('setup-savings-goal').value) || 500000,
@@ -765,7 +881,6 @@ const SetupWizard = (() => {
         fgts:        Number(document.getElementById('setup-fgts').value) || 0,
         carValue:    Number(document.getElementById('setup-car-value').value) || 0
       });
-      // Save patrimonio
       const pat = Store.data.getPatrimonio();
       Store.data.setPatrimonio({
         ...pat,
@@ -775,19 +890,19 @@ const SetupWizard = (() => {
         carValue:    Number(document.getElementById('setup-car-value').value) || 0
       });
     }
-    if (fromStep === 3) {
+    if (fromStep === 4) {
       saveAccountsFromDOM();
     }
-    if (fromStep === 4) {
+    if (fromStep === 5) {
       saveCardsFromDOM();
     }
     showStep(fromStep + 1);
   }
 
   function back(fromStep) {
-    if (fromStep === 5) saveCategoriesFromDOM();
-    if (fromStep === 4) saveCardsFromDOM();
-    if (fromStep === 3) saveAccountsFromDOM();
+    if (fromStep === 6) saveCategoriesFromDOM();
+    if (fromStep === 5) saveCardsFromDOM();
+    if (fromStep === 4) saveAccountsFromDOM();
     showStep(fromStep - 1);
   }
 
