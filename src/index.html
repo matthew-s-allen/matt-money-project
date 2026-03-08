@@ -45,6 +45,8 @@
       <div class="setup-step-dot" data-step="4">4</div>
       <div class="setup-step-line"></div>
       <div class="setup-step-dot" data-step="5">5</div>
+      <div class="setup-step-line"></div>
+      <div class="setup-step-dot" data-step="6">6</div>
     </div>
 
     <!-- Step 1: Profile -->
@@ -55,14 +57,86 @@
         <input type="text" id="setup-name" class="form-input" placeholder="Matthew" />
       </div>
       <div class="form-group">
-        <label class="form-label">Monthly salary (R$)</label>
+        <label class="form-label">Gross monthly salary (R$)</label>
         <input type="number" id="setup-salary" class="form-input" placeholder="7500" inputmode="decimal" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Work start date</label>
+        <input type="date" id="setup-work-start" class="form-input" />
       </div>
       <button class="btn btn-primary btn-full" onclick="SetupWizard.next(1)">Continue</button>
     </div>
 
-    <!-- Step 2: Financial Goals & Assets -->
+    <!-- Step 2: Employment & Salary Details -->
     <div id="setup-step-2" class="setup-step-content hidden">
+      <h2 class="setup-step-title">Salary & Vacation</h2>
+      <p class="setup-step-desc">Your net salary will be calculated automatically based on CLT rules.</p>
+
+      <div class="divider-text" style="margin-top:0">Vacation Policy</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Vacation days/year</label>
+          <input type="number" id="setup-vacation-days" class="form-input" placeholder="30" value="30" inputmode="numeric" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Periods/year</label>
+          <input type="number" id="setup-vacation-periods" class="form-input" placeholder="3" value="3" min="1" max="3" inputmode="numeric" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Days to sell (abono pecuniario, max 10)</label>
+        <input type="number" id="setup-vacation-sell" class="form-input" placeholder="0" value="0" min="0" max="10" inputmode="numeric" />
+      </div>
+
+      <div class="divider-text">Monthly Deductions</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Health plan (R$)</label>
+          <input type="number" id="setup-deduct-health" class="form-input" placeholder="0" inputmode="decimal" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Dental (R$)</label>
+          <input type="number" id="setup-deduct-dental" class="form-input" placeholder="0" inputmode="decimal" />
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Vale Transporte (R$)</label>
+          <input type="number" id="setup-deduct-vt" class="form-input" placeholder="0" inputmode="decimal" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Other deductions (R$)</label>
+          <input type="number" id="setup-deduct-other" class="form-input" placeholder="0" inputmode="decimal" />
+        </div>
+      </div>
+
+      <div class="divider-text">Monthly Benefits</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Vale Alimentacao (R$)</label>
+          <input type="number" id="setup-benefit-va" class="form-input" placeholder="0" inputmode="decimal" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Vale Refeicao (R$)</label>
+          <input type="number" id="setup-benefit-vr" class="form-input" placeholder="0" inputmode="decimal" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Other benefits (R$)</label>
+        <input type="number" id="setup-benefit-other" class="form-input" placeholder="0" inputmode="decimal" />
+      </div>
+
+      <!-- Live salary preview -->
+      <div id="setup-salary-preview" class="card" style="margin-top:var(--space-md);background:var(--bg-secondary)"></div>
+
+      <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(2)">Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(2)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Goals & Assets -->
+    <div id="setup-step-3" class="setup-step-content hidden">
       <h2 class="setup-step-title">Goals & Assets</h2>
       <p class="setup-step-desc">Set your savings target and enter current asset values.</p>
       <div class="form-group">
@@ -90,42 +164,42 @@
         <input type="number" id="setup-car-value" class="form-input" placeholder="50000" inputmode="decimal" />
       </div>
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(2)">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(2)">Continue</button>
-      </div>
-    </div>
-
-    <!-- Step 3: Bank Accounts -->
-    <div id="setup-step-3" class="setup-step-content hidden">
-      <h2 class="setup-step-title">Bank Accounts</h2>
-      <p class="setup-step-desc">Add your checking and savings accounts with current balances.</p>
-      <div id="setup-accounts-list"></div>
-      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addAccount()" style="margin-top:var(--space-sm)">+ Add account</button>
-      <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
         <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(3)">Back</button>
         <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(3)">Continue</button>
       </div>
     </div>
 
-    <!-- Step 4: Credit Cards -->
+    <!-- Step 4: Bank Accounts -->
     <div id="setup-step-4" class="setup-step-content hidden">
-      <h2 class="setup-step-title">Credit Cards</h2>
-      <p class="setup-step-desc">Add your credit cards with current balances and limits.</p>
-      <div id="setup-cards-list"></div>
-      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addCard()" style="margin-top:var(--space-sm)">+ Add credit card</button>
+      <h2 class="setup-step-title">Bank Accounts</h2>
+      <p class="setup-step-desc">Add your checking and savings accounts with current balances.</p>
+      <div id="setup-accounts-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addAccount()" style="margin-top:var(--space-sm)">+ Add account</button>
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
         <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(4)">Back</button>
         <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(4)">Continue</button>
       </div>
     </div>
 
-    <!-- Step 5: Category Budgets -->
+    <!-- Step 5: Credit Cards -->
     <div id="setup-step-5" class="setup-step-content hidden">
+      <h2 class="setup-step-title">Credit Cards</h2>
+      <p class="setup-step-desc">Add your credit cards with current balances and limits.</p>
+      <div id="setup-cards-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addCard()" style="margin-top:var(--space-sm)">+ Add credit card</button>
+      <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(5)">Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(5)">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 6: Category Budgets -->
+    <div id="setup-step-6" class="setup-step-content hidden">
       <h2 class="setup-step-title">Monthly Budgets</h2>
       <p class="setup-step-desc">Set a monthly spending limit for each category. You can adjust later.</p>
       <div id="setup-categories-list"></div>
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(5)">Back</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(6)">Back</button>
         <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.finish()">Start Tracking</button>
       </div>
     </div>
@@ -230,6 +304,56 @@
     <div class="form-group">
       <label class="form-label">Car current value (R$)</label>
       <input type="number" id="settings-car-value" class="form-input" placeholder="50000" />
+    </div>
+
+    <div class="divider-text" style="margin-top:var(--space-lg)">Employment & Salary</div>
+    <div class="form-group">
+      <label class="form-label">Work start date</label>
+      <input type="date" id="settings-work-start" class="form-input" />
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Vacation days</label>
+        <input type="number" id="settings-vacation-days" class="form-input" placeholder="30" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Days to sell</label>
+        <input type="number" id="settings-vacation-sell" class="form-input" placeholder="0" min="0" max="10" />
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Health plan (R$)</label>
+        <input type="number" id="settings-deduct-health" class="form-input" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dental (R$)</label>
+        <input type="number" id="settings-deduct-dental" class="form-input" placeholder="0" />
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Vale Transporte (R$)</label>
+        <input type="number" id="settings-deduct-vt" class="form-input" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Other deductions (R$)</label>
+        <input type="number" id="settings-deduct-other" class="form-input" placeholder="0" />
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Vale Alimentacao (R$)</label>
+        <input type="number" id="settings-benefit-va" class="form-input" placeholder="0" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Vale Refeicao (R$)</label>
+        <input type="number" id="settings-benefit-vr" class="form-input" placeholder="0" />
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Other benefits (R$)</label>
+      <input type="number" id="settings-benefit-other" class="form-input" placeholder="0" />
     </div>
 
     <div class="divider-text" style="margin-top:var(--space-lg)">Appearance</div>

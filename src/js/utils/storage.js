@@ -81,34 +81,40 @@ const Store = (() => {
     isSetupDone()         { return raw.get('setup_done', false); },
     setSetupDone(v)       { raw.set('setup_done', v); },
 
+    // ── Installments ────────────────────────────────────────────
+    getInstallments()      { return raw.get('data_installments', []); },
+    setInstallments(v)     { raw.set('data_installments', v); },
+
     // Export everything as a single JSON blob
     exportAll() {
       return {
         version: 3,
         exportedAt: new Date().toISOString(),
-        transactions: data.getTransactions(),
-        debts:        data.getDebts(),
-        patrimonio:   data.getPatrimonio(),
-        categories:   data.getCategories(),
-        milestones:   data.getMilestones(),
-        accounts:     data.getAccounts(),
-        creditCards:  data.getCreditCards(),
-        setupDone:    data.isSetupDone(),
-        profile:      profile.get(),
-        config:       config.get()
+        transactions:  data.getTransactions(),
+        debts:         data.getDebts(),
+        patrimonio:    data.getPatrimonio(),
+        categories:    data.getCategories(),
+        milestones:    data.getMilestones(),
+        accounts:      data.getAccounts(),
+        creditCards:   data.getCreditCards(),
+        installments:  data.getInstallments(),
+        setupDone:     data.isSetupDone(),
+        profile:       profile.get(),
+        config:        config.get()
       };
     },
 
     // Import from a JSON blob (merges or replaces)
     importAll(blob) {
       if (!blob || blob.version < 2) throw new Error('Unrecognised backup format');
-      if (blob.transactions) data.setTransactions(blob.transactions);
-      if (blob.debts)        data.setDebts(blob.debts);
-      if (blob.patrimonio)   data.setPatrimonio(blob.patrimonio);
-      if (blob.categories)   data.setCategories(blob.categories);
-      if (blob.milestones)   data.setMilestones(blob.milestones);
-      if (blob.accounts)     data.setAccounts(blob.accounts);
-      if (blob.creditCards)  data.setCreditCards(blob.creditCards);
+      if (blob.transactions)  data.setTransactions(blob.transactions);
+      if (blob.debts)         data.setDebts(blob.debts);
+      if (blob.patrimonio)    data.setPatrimonio(blob.patrimonio);
+      if (blob.categories)    data.setCategories(blob.categories);
+      if (blob.milestones)    data.setMilestones(blob.milestones);
+      if (blob.accounts)      data.setAccounts(blob.accounts);
+      if (blob.creditCards)   data.setCreditCards(blob.creditCards);
+      if (blob.installments)  data.setInstallments(blob.installments);
       if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
       if (blob.profile)  profile.set(blob.profile);
       if (blob.config)   config.set(blob.config);
@@ -153,7 +159,21 @@ const Store = (() => {
       return raw.get('profile', {
         name: 'Matthew', salary: 7500, fgts: 68000,
         carValue: 50000, debtTotal: 14000,
-        savingsGoal: 500000, targetYears: 15
+        savingsGoal: 500000, targetYears: 15,
+        // Employment
+        workStartDate: '',
+        vacationDaysTotal: 30,
+        vacationPeriods: 3,
+        vacationDaysToSell: 0,
+        // Deductions (monthly fixed amounts deducted from paycheck)
+        deductHealthPlan: 0,
+        deductDental: 0,
+        deductValeTransporte: 0,
+        deductOther: 0,
+        // Benefits (monthly values received on top of salary)
+        benefitVA: 0,
+        benefitVR: 0,
+        benefitOther: 0
       });
     },
     set(updates) { raw.set('profile', { ...profile.get(), ...updates }); }

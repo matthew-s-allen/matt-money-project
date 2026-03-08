@@ -146,6 +146,9 @@ const Dashboard = (() => {
         </div>
       </div>
 
+      <!-- Salary Breakdown -->
+      ${renderSalaryCard()}
+
       <!-- Account balances -->
       ${(accounts.length > 0 || cards.length > 0) ? `
       <div class="grid-2" style="margin-bottom:var(--space-md)">
@@ -435,6 +438,64 @@ const Dashboard = (() => {
         }
       }
     });
+  }
+
+  function renderSalaryCard() {
+    const profile = Store.profile.get();
+    if (!profile.salary) return '';
+    const b = API.calcSalaryBreakdown(profile);
+
+    const row = (label, val, color) => `
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
+        <span style="color:var(--text-secondary)">${label}</span>
+        <span style="color:${color || 'var(--text)'};font-family:var(--font-mono)">${val}</span>
+      </div>`;
+
+    return `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header" style="margin-bottom:var(--space-sm)">
+          <span class="card-title">Salary Breakdown</span>
+          <span class="pill pill-blue" style="font-size:10px">CLT</span>
+        </div>
+        ${row('Gross salary', Fmt.currency(b.gross))}
+        ${row('INSS', '-' + Fmt.currency(b.inss), 'var(--red)')}
+        ${row('IRRF', '-' + Fmt.currency(b.irrf), 'var(--red)')}
+        ${b.healthPlan ? row('Health plan', '-' + Fmt.currency(b.healthPlan), 'var(--red)') : ''}
+        ${b.dental ? row('Dental', '-' + Fmt.currency(b.dental), 'var(--red)') : ''}
+        ${b.vt ? row('Vale Transporte', '-' + Fmt.currency(b.vt), 'var(--red)') : ''}
+        ${b.otherDeduct ? row('Other deductions', '-' + Fmt.currency(b.otherDeduct), 'var(--red)') : ''}
+
+        <div style="border-top:1px solid var(--border);margin:var(--space-sm) 0;padding-top:var(--space-sm)">
+          ${row('<strong>Net salary</strong>', '<strong>' + Fmt.currency(b.netSalary) + '</strong>', 'var(--green)')}
+        </div>
+
+        ${b.totalBenefits > 0 ? `
+          ${row('+ VA/VR/Benefits', '+' + Fmt.currency(b.totalBenefits), 'var(--blue)')}
+          ${row('<strong>Total take-home</strong>', '<strong>' + Fmt.currency(b.totalTakeHome) + '</strong>', 'var(--green)')}
+        ` : ''}
+
+        <div style="border-top:1px solid var(--border);margin-top:var(--space-sm);padding-top:var(--space-sm)">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-sm);text-align:center">
+            <div>
+              <div style="font-size:10px;color:var(--text-muted)">FGTS/mo</div>
+              <div style="font-size:13px;font-weight:600;color:var(--blue)">${Fmt.compact(b.fgtsMonthly)}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text-muted)">13th (net)</div>
+              <div style="font-size:13px;font-weight:600;color:var(--green)">${Fmt.compact(b.decimoTerceiroNet)}</div>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text-muted)">Vacation $</div>
+              <div style="font-size:13px;font-weight:600;color:var(--green)">${Fmt.compact(b.vacationBonus + b.abonoPecuniario)}</div>
+            </div>
+          </div>
+          ${b.daysToSell > 0 ? `<div style="font-size:10px;color:var(--text-muted);text-align:center;margin-top:4px">Selling ${b.daysToSell} vacation days = ${Fmt.currency(b.abonoPecuniario)}</div>` : ''}
+          <div style="font-size:11px;text-align:center;margin-top:var(--space-sm);color:var(--text-muted)">
+            Annual total: <strong style="color:var(--green)">${Fmt.currency(b.annualTotal)}</strong>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   return { render };

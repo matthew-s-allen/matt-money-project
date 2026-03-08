@@ -438,6 +438,179 @@ Critical extraction rules:
     Store.cache.invalidateAll();
   }
 
+  // ── Salary Calculator (CLT Brazil) ─────────────────────────
+
+  // INSS 2024/2025 progressive brackets
+  const INSS_BRACKETS = [
+    { limit: 1412.00,  rate: 0.075 },
+    { limit: 2666.68,  rate: 0.09 },
+    { limit: 4000.03,  rate: 0.12 },
+    { limit: 7786.02,  rate: 0.14 }
+  ];
+
+  // IRRF 2024/2025 brackets (applied after INSS deduction)
+  const IRRF_BRACKETS = [
+    { limit: 2259.20, rate: 0.00,  deduction: 0 },
+    { limit: 2826.65, rate: 0.075, deduction: 169.44 },
+    { limit: 3751.05, rate: 0.15,  deduction: 381.44 },
+    { limit: 4664.68, rate: 0.225, deduction: 662.77 },
+    { limit: Infinity, rate: 0.275, deduction: 896.00 }
+  ];
+
+  function calcINSS(grossSalary) {
+    let inss = 0;
+    let prev = 0;
+    for (const b of INSS_BRACKETS) {
+      const taxable = Math.min(grossSalary, b.limit) - prev;
+      if (taxable <= 0) break;
+      inss += taxable * b.rate;
+      prev = b.limit;
+    }
+    return Math.round(inss * 100) / 100;
+  }
+
+  function calcIRRF(grossSalary, inss) {
+    const base = grossSalary - inss;
+    for (const b of IRRF_BRACKETS) {
+      if (base <= b.limit) {
+        const tax = base * b.rate - b.deduction;
+        return Math.max(0, Math.round(tax * 100) / 100);
+      }
+    }
+    return 0;
+  }
+
+  function calcSalaryBreakdown(profile) {
+    const gross = profile.salary || 0;
+    const inss = calcINSS(gross);
+    const irrf = calcIRRF(gross, inss);
+    const healthPlan = profile.deductHealthPlan || 0;
+    const dental = profile.deductDental || 0;
+    const vt = profile.deductValeTransporte || 0;
+    const otherDeduct = profile.deductOther || 0;
+    const totalDeductions = inss + irrf + healthPlan + dental + vt + otherDeduct;
+    const netSalary = gross - totalDeductions;
+
+    // Benefits
+    const va = profile.benefitVA || 0;
+    const vr = profile.benefitVR || 0;
+    const otherBenefit = profile.benefitOther || 0;
+    const totalBenefits = va + vr + otherBenefit;
+    const totalTakeHome = netSalary + totalBenefits;
+
+    // Vacation calculation
+    const vacationDays = profile.vacationDaysTotal || 30;
+    const daysToSell = profile.vacationDaysToSell || 0;
+    const actualVacationDays = vacationDays - daysToSell;
+
+    // Vacation pay: salary + 1/3 bonus for vacation period
+    const dailySalary = gross / 30;
+    const vacationPay = dailySalary * actualVacationDays;
+    const vacationBonus = vacationPay / 3; // terco constitucional
+    const abonoPecuniario = daysToSell > 0 ? (dailySalary * daysToSell * 4 / 3) : 0; // sold days + 1/3
+
+    // 13th salary (2 installments)
+    const decimoTerceiro = gross;
+    const decimoTerceiroINSS = calcINSS(gross);
+    const decimoTerceiroIRRF = calcIRRF(gross, decimoTerceiroINSS);
+    const decimoTerceiroNet = gross - decimoTerceiroINSS - decimoTerceiroIRRF;
+
+    // FGTS (employer contribution, not deducted)
+    const fgtsMonthly = gross * 0.08;
+
+    // Annual projection
+    const annualGross = gross * 12;
+    const annualNet = netSalary * 12;
+    const annualBenefits = totalBenefits * 12;
+    const annualVacation = vacationPay + vacationBonus + abonoPecuniario;
+    const annualTotal = annualNet + annualBenefits + decimoTerceiroNet + annualVacation;
+
+    return {
+      gross, inss, irrf,
+      healthPlan, dental, vt, otherDeduct,
+      totalDeductions, netSalary,
+      va, vr, otherBenefit, totalBenefits,
+      totalTakeHome,
+      // Vacation
+      vacationDays, actualVacationDays, daysToSell,
+      vacationPay, vacationBonus, abonoPecuniario,
+      // 13th
+      decimoTerceiro, decimoTerceiroNet,
+      // FGTS
+      fgtsMonthly,
+      // Annual
+      annualGross, annualNet, annualBenefits,
+      annualVacation, annualTotal
+    };
+  }
+
+  // ── Installments (Parcelas) ────────────────────────────────
+
+  function getInstallments() {
+    return Store.data.getInstallments();
+  }
+
+  function setInstallments(v) {
+    Store.data.setInstallments(v);
+  }
+
+  async function upsertInstallment(inst) {
+    const all = getInstallments();
+    const entry = {
+      ...inst,
+      id: inst.id || crypto.randomUUID(),
+      updatedAt: new Date().toISOString()
+    };
+    const idx = all.findIndex(i => i.id === entry.id);
+    if (idx >= 0) all[idx] = entry; else all.push(entry);
+    setInstallments(all);
+    Store.cache.invalidateAll();
+    return { data: entry, success: true };
+  }
+
+  async function deleteInstallment(id) {
+    setInstallments(getInstallments().filter(i => i.id !== id));
+    Store.cache.invalidateAll();
+    return { success: true };
+  }
+
+  // Get future faturas for a card, projected N months forward
+  function getFuturasFatura(cardId, months = 6) {
+    const card = Store.data.getCreditCards().find(c => c.id === cardId);
+    if (!card) return [];
+
+    const installments = getInstallments().filter(i => i.cardId === cardId);
+    const now = new Date();
+    const faturas = [];
+
+    for (let m = 0; m < months; m++) {
+      const faturaDate = new Date(now.getFullYear(), now.getMonth() + m, 1);
+      const monthKey = `${faturaDate.getFullYear()}-${String(faturaDate.getMonth() + 1).padStart(2, '0')}`;
+      let total = 0;
+      const items = [];
+
+      for (const inst of installments) {
+        const [startY, startM] = inst.startMonth.split('-').map(Number);
+        const startDate = new Date(startY, startM - 1, 1);
+        const monthsSinceStart = (faturaDate.getFullYear() - startDate.getFullYear()) * 12 + (faturaDate.getMonth() - startDate.getMonth());
+
+        if (monthsSinceStart >= 0 && monthsSinceStart < inst.totalInstallments) {
+          const installmentNum = monthsSinceStart + 1;
+          items.push({
+            description: inst.description,
+            amount: inst.monthlyAmount,
+            installment: `${installmentNum}/${inst.totalInstallments}`
+          });
+          total += inst.monthlyAmount;
+        }
+      }
+
+      faturas.push({ month: monthKey, total, items, closingDay: card.closingDay, dueDay: card.dueDay });
+    }
+
+    return faturas;
+  }
+
   // ── Accounts ─────────────────────────────────────────────
 
   async function getAccounts() {
@@ -498,6 +671,8 @@ Critical extraction rules:
     getCreditCards, upsertCreditCard, deleteCreditCard,
     parseReceiptWithGemini,
     exportData, importData,
+    calcSalaryBreakdown, calcINSS, calcIRRF,
+    getInstallments, upsertInstallment, deleteInstallment, getFuturasFatura,
     syncBackup, selectBackupFolder, shareBackup, downloadSnapshot, startFresh,
     flushQueue, initBackend
   };
