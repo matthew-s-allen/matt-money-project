@@ -208,9 +208,13 @@ If the image is not a receipt or financial document, set confidence to "low" and
 
     const data = await res.json();
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Gemini returned unexpected format');
-    return JSON.parse(jsonMatch[0]);
+    try {
+      return JSON.parse(text);
+    } catch {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error('Gemini returned unexpected format');
+      return JSON.parse(jsonMatch[0]);
+    }
   }
 
   // ── Export / Import ───────────────────────────────────────

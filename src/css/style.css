@@ -634,19 +634,28 @@ ul, ol { list-style: none; }
   align-items: center;
   justify-content: center;
   gap: var(--space-md);
-  cursor: pointer;
   transition: all 0.2s;
   background: var(--bg-secondary);
   text-align: center;
   min-height: 160px;
 }
-.camera-zone:hover, .camera-zone.drag-over {
+.camera-zone.drag-over {
   border-color: var(--red);
   background: var(--red-glow);
 }
 .camera-zone svg { color: var(--text-muted); width: 40px; height: 40px; }
-.camera-zone p { color: var(--text-secondary); font-size: 13px; }
-.camera-zone small { color: var(--text-muted); font-size: 11px; }
+.camera-zone p { color: var(--text-secondary); font-size: 13px; margin: 0; }
+.camera-zone .camera-zone-btns { display: flex; gap: var(--space-sm); }
+.camera-zone .camera-zone-btns .btn-camera {
+  background: var(--red-glow);
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+.camera-zone .camera-zone-btns .btn-file {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
 
 .receipt-preview {
   border-radius: var(--radius-lg);

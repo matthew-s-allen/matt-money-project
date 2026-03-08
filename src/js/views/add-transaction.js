@@ -49,11 +49,15 @@ const AddTransaction = (() => {
           <span class="pill pill-red">Gemini</span>
         </div>
 
-        <div class="camera-zone" id="camera-zone" onclick="document.getElementById('file-input').click()">
-          <input type="file" id="file-input" accept="image/*" style="display:none" />
+        <div class="camera-zone" id="camera-zone">
+          <input type="file" id="file-input-camera" accept="image/*" capture="environment" style="display:none" />
+          <input type="file" id="file-input-file" accept="image/*" style="display:none" />
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          <p>Tap to take a photo or upload receipt</p>
-          <small>Gemini AI will read merchant, items & total</small>
+          <p>Scan a receipt with Gemini AI</p>
+          <div class="camera-zone-btns">
+            <button class="btn btn-sm btn-camera" onclick="document.getElementById('file-input-camera').click()">📷 Take Photo</button>
+            <button class="btn btn-sm btn-file" onclick="document.getElementById('file-input-file').click()">📁 Upload File</button>
+          </div>
         </div>
 
         <div id="ai-status" class="hidden"></div>
@@ -107,8 +111,9 @@ const AddTransaction = (() => {
       </button>
     `;
 
-    // Wire up file input
-    document.getElementById('file-input').addEventListener('change', handleFileSelect);
+    // Wire up file inputs
+    document.getElementById('file-input-camera').addEventListener('change', handleFileSelect);
+    document.getElementById('file-input-file').addEventListener('change', handleFileSelect);
 
     // Wire up drag & drop on camera zone
     const zone = document.getElementById('camera-zone');
@@ -153,14 +158,19 @@ const AddTransaction = (() => {
       // Show preview in camera zone
       const zone = document.getElementById('camera-zone');
       zone.innerHTML = `
+        <input type="file" id="file-input-camera" accept="image/*" capture="environment" style="display:none" />
+        <input type="file" id="file-input-file" accept="image/*" style="display:none" />
         <div class="receipt-preview" style="width:100%">
           <img src="${e.target.result}" alt="Receipt preview" />
           <div class="receipt-preview-overlay">
-            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('file-input').click()">Change</button>
+            <button class="btn btn-sm btn-camera" onclick="document.getElementById('file-input-camera').click()">📷 Retake</button>
+            <button class="btn btn-sm btn-file" onclick="document.getElementById('file-input-file').click()">📁 Replace</button>
             <button class="btn btn-ghost btn-sm" onclick="AddTransaction.clearImage()" style="color:var(--red)">Remove</button>
           </div>
         </div>
       `;
+      document.getElementById('file-input-camera').addEventListener('change', handleFileSelect);
+      document.getElementById('file-input-file').addEventListener('change', handleFileSelect);
 
       // Scan with Gemini
       await scanWithAI(base64, file.type);
@@ -306,13 +316,17 @@ const AddTransaction = (() => {
 
     const zone = document.getElementById('camera-zone');
     zone.innerHTML = `
-      <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" />
+      <input type="file" id="file-input-camera" accept="image/*" capture="environment" style="display:none" />
+      <input type="file" id="file-input-file" accept="image/*" style="display:none" />
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      <p>Tap to take a photo or upload receipt</p>
-      <small>Gemini AI will read merchant, items & total</small>
+      <p>Scan a receipt with Gemini AI</p>
+      <div class="camera-zone-btns">
+        <button class="btn btn-sm btn-camera" onclick="document.getElementById('file-input-camera').click()">📷 Take Photo</button>
+        <button class="btn btn-sm btn-file" onclick="document.getElementById('file-input-file').click()">📁 Upload File</button>
+      </div>
     `;
-    zone.onclick = () => document.getElementById('file-input').click();
-    document.getElementById('file-input').addEventListener('change', handleFileSelect);
+    document.getElementById('file-input-camera').addEventListener('change', handleFileSelect);
+    document.getElementById('file-input-file').addEventListener('change', handleFileSelect);
     document.getElementById('ai-status').classList.add('hidden');
     document.getElementById('ai-suggestion-card').classList.add('hidden');
   }

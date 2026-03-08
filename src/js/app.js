@@ -174,6 +174,7 @@ const App = (() => {
 
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
         <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('tx-detail-modal').classList.add('hidden')">Close</button>
+        <button class="btn btn-primary" style="flex:1" onclick="App.openEditTx(${JSON.stringify(tx).replace(/"/g,'&quot;')})">Edit</button>
         <button class="btn" style="flex:0;background:var(--red-glow);color:var(--red);border:1px solid var(--border-accent)" onclick="App.confirmDeleteTx('${tx.id}')">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
         </button>
@@ -181,6 +182,83 @@ const App = (() => {
     `;
 
     modal.classList.remove('hidden');
+  }
+
+  function openEditTx(tx) {
+    const content = document.getElementById('tx-detail-content');
+    content.innerHTML = `
+      <div class="modal-handle"></div>
+      <h2 class="modal-title">Edit Transaction</h2>
+
+      <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-md)">
+        <button id="edit-btn-expense" class="type-toggle-btn ${tx.type!=='income'?'active-expense':''}" onclick="document.getElementById('edit-btn-expense').className='type-toggle-btn active-expense';document.getElementById('edit-btn-income').className='type-toggle-btn';">Expense</button>
+        <button id="edit-btn-income" class="type-toggle-btn ${tx.type==='income'?'active-income':''}" onclick="document.getElementById('edit-btn-income').className='type-toggle-btn active-income';document.getElementById('edit-btn-expense').className='type-toggle-btn';">Income</button>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Amount (R$)</label>
+        <input type="number" id="edit-amount" class="form-input" value="${tx.amount}" min="0" step="0.01" inputmode="decimal" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <input type="text" id="edit-description" class="form-input" value="${tx.description || ''}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Merchant</label>
+        <input type="text" id="edit-merchant" class="form-input" value="${tx.merchant || ''}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input type="date" id="edit-date" class="form-input" value="${tx.date || ''}" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="edit-notes" class="form-textarea">${tx.notes || ''}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Category</label>
+        <div class="cat-grid">
+          ${CATEGORIES.map(cat => `
+            <button class="cat-btn ${cat.id === tx.category ? 'selected' : ''}"
+              data-cat="${cat.id}"
+              onclick="document.querySelectorAll('#tx-detail-content .cat-btn').forEach(b=>b.classList.remove('selected'));this.classList.add('selected')">
+              <span class="cat-emoji">${cat.emoji}</span>${cat.label}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+
+      <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
+        <button class="btn btn-secondary" style="flex:1" onclick="App.openTxDetail(${JSON.stringify(tx).replace(/"/g,'&quot;')})">Back</button>
+        <button class="btn btn-primary" style="flex:1" id="edit-save-btn" onclick="App.saveEditTx('${tx.id}')">Save</button>
+      </div>
+    `;
+  }
+
+  async function saveEditTx(id) {
+    const amount      = parseFloat(document.getElementById('edit-amount').value);
+    const description = document.getElementById('edit-description').value.trim();
+    const merchant    = document.getElementById('edit-merchant').value.trim();
+    const date        = document.getElementById('edit-date').value;
+    const notes       = document.getElementById('edit-notes').value.trim();
+    const selectedCat = document.querySelector('#tx-detail-content .cat-btn.selected');
+    const category    = selectedCat ? selectedCat.dataset.cat : 'other';
+    const type        = document.getElementById('edit-btn-income').className.includes('active-income') ? 'income' : 'expense';
+
+    if (!amount || amount <= 0) { toast('Please enter an amount', 'error'); return; }
+
+    const btn = document.getElementById('edit-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    try {
+      await API.updateTransaction(id, { type, amount, description: description || merchant, merchant, category, date, notes });
+      document.getElementById('tx-detail-modal').classList.add('hidden');
+      toast('Transaction updated', 'success');
+      renderView(state.activeView);
+    } catch (e) {
+      btn.disabled = false; btn.textContent = 'Save';
+      toast(e.message, 'error');
+    }
   }
 
   async function confirmDeleteTx(id) {
@@ -259,6 +337,25 @@ const App = (() => {
       if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
     });
 
+    // PWA install prompt
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      document.getElementById('pwa-install-section').style.display = 'block';
+    });
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      document.getElementById('pwa-install-section').style.display = 'none';
+      document.getElementById('pwa-installed-msg').style.display = 'block';
+    });
+    document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      const { outcome } = await deferredInstallPrompt.userChoice;
+      if (outcome === 'accepted') deferredInstallPrompt = null;
+    });
+
     // Online/offline
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -286,6 +383,8 @@ const App = (() => {
     prevMonth,
     nextMonth,
     openTxDetail,
+    openEditTx,
+    saveEditTx,
     confirmDeleteTx,
     openSettings,
     CATEGORIES,
