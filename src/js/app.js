@@ -3,6 +3,8 @@
    ============================================================ */
 
 const App = (() => {
+  const VERSION = 'v2026.03.08';
+
   // ── State ─────────────────────────────────────────────────
   const state = {
     activeView: 'dashboard',
@@ -116,6 +118,7 @@ const App = (() => {
     document.getElementById('settings-car-value').value   = profile.carValue || '';
     document.getElementById('settings-debt-total').value  = profile.debtTotal || '';
 
+    document.getElementById('app-version').textContent = `Matt Money ${VERSION}`;
     document.getElementById('settings-modal').classList.remove('hidden');
   }
 
@@ -388,7 +391,8 @@ const App = (() => {
     confirmDeleteTx,
     openSettings,
     CATEGORIES,
-    getCat
+    getCat,
+    VERSION
   };
 })();
 
