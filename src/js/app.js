@@ -145,6 +145,9 @@ const App = (() => {
     document.getElementById('settings-target-years').value     = profile.targetYears || '';
     document.getElementById('settings-fgts').value             = profile.fgts || '';
     document.getElementById('settings-car-value').value        = profile.carValue || '';
+    document.getElementById('settings-adiantamento').value     = profile.adiantamentoAmount || '';
+    document.getElementById('settings-adiantamento-day').value = profile.adiantamentoDay || 15;
+    document.getElementById('settings-salary-day').value       = profile.salaryDay || 30;
     document.getElementById('settings-work-start').value       = profile.workStartDate || '';
     document.getElementById('settings-vacation-days').value    = profile.vacationDaysTotal || 30;
     document.getElementById('settings-vacation-sell').value    = profile.vacationDaysToSell || 0;
@@ -206,22 +209,25 @@ const App = (() => {
     Store.config.set({ geminiKey: geminiKey || '' });
 
     Store.profile.set({
-      name:                document.getElementById('settings-name').value.trim() || 'Matthew',
-      salary:              Number(document.getElementById('settings-salary').value) || 7500,
-      savingsGoal:         Number(document.getElementById('settings-savings-goal').value) || 500000,
-      targetYears:         Number(document.getElementById('settings-target-years').value) || 15,
-      fgts:                Number(document.getElementById('settings-fgts').value) || 68000,
-      carValue:            Number(document.getElementById('settings-car-value').value) || 50000,
-      workStartDate:       document.getElementById('settings-work-start').value || '',
-      vacationDaysTotal:   Number(document.getElementById('settings-vacation-days').value) || 30,
-      vacationDaysToSell:  Number(document.getElementById('settings-vacation-sell').value) || 0,
-      deductHealthPlan:    Number(document.getElementById('settings-deduct-health').value) || 0,
-      deductDental:        Number(document.getElementById('settings-deduct-dental').value) || 0,
-      deductValeTransporte:Number(document.getElementById('settings-deduct-vt').value) || 0,
-      deductOther:         Number(document.getElementById('settings-deduct-other').value) || 0,
-      benefitVA:           Number(document.getElementById('settings-benefit-va').value) || 0,
-      benefitVR:           Number(document.getElementById('settings-benefit-vr').value) || 0,
-      benefitOther:        Number(document.getElementById('settings-benefit-other').value) || 0
+      name:                 document.getElementById('settings-name').value.trim() || 'Matthew',
+      salary:               Number(document.getElementById('settings-salary').value) || 7500,
+      savingsGoal:          Number(document.getElementById('settings-savings-goal').value) || 500000,
+      targetYears:          Number(document.getElementById('settings-target-years').value) || 15,
+      fgts:                 Number(document.getElementById('settings-fgts').value) || 68000,
+      carValue:             Number(document.getElementById('settings-car-value').value) || 50000,
+      adiantamentoAmount:   Number(document.getElementById('settings-adiantamento').value) || 0,
+      adiantamentoDay:      Number(document.getElementById('settings-adiantamento-day').value) || 15,
+      salaryDay:            Number(document.getElementById('settings-salary-day').value) || 30,
+      workStartDate:        document.getElementById('settings-work-start').value || '',
+      vacationDaysTotal:    Number(document.getElementById('settings-vacation-days').value) || 30,
+      vacationDaysToSell:   Number(document.getElementById('settings-vacation-sell').value) || 0,
+      deductHealthPlan:     Number(document.getElementById('settings-deduct-health').value) || 0,
+      deductDental:         Number(document.getElementById('settings-deduct-dental').value) || 0,
+      deductValeTransporte: Number(document.getElementById('settings-deduct-vt').value) || 0,
+      deductOther:          Number(document.getElementById('settings-deduct-other').value) || 0,
+      benefitVA:            Number(document.getElementById('settings-benefit-va').value) || 0,
+      benefitVR:            Number(document.getElementById('settings-benefit-vr').value) || 0,
+      benefitOther:         Number(document.getElementById('settings-benefit-other').value) || 0
     });
 
     // Save backup account name
@@ -729,17 +735,20 @@ const SetupWizard = (() => {
     document.getElementById('setup-salary').value = profile.salary || '';
     document.getElementById('setup-work-start').value = profile.workStartDate || '';
 
-    // Pre-fill step 2: employment & salary
-    document.getElementById('setup-vacation-days').value = profile.vacationDaysTotal || 30;
-    document.getElementById('setup-vacation-periods').value = profile.vacationPeriods || 3;
-    document.getElementById('setup-vacation-sell').value = profile.vacationDaysToSell || 0;
-    document.getElementById('setup-deduct-health').value = profile.deductHealthPlan || '';
-    document.getElementById('setup-deduct-dental').value = profile.deductDental || '';
-    document.getElementById('setup-deduct-vt').value = profile.deductValeTransporte || '';
-    document.getElementById('setup-deduct-other').value = profile.deductOther || '';
-    document.getElementById('setup-benefit-va').value = profile.benefitVA || '';
-    document.getElementById('setup-benefit-vr').value = profile.benefitVR || '';
-    document.getElementById('setup-benefit-other').value = profile.benefitOther || '';
+    // Pre-fill step 2: income schedule + employment & salary
+    document.getElementById('setup-adiantamento').value      = profile.adiantamentoAmount || '';
+    document.getElementById('setup-adiantamento-day').value  = profile.adiantamentoDay || 15;
+    document.getElementById('setup-salary-day').value        = profile.salaryDay || 30;
+    document.getElementById('setup-vacation-days').value     = profile.vacationDaysTotal || 30;
+    document.getElementById('setup-vacation-periods').value  = profile.vacationPeriods || 3;
+    document.getElementById('setup-vacation-sell').value     = profile.vacationDaysToSell || 0;
+    document.getElementById('setup-deduct-health').value     = profile.deductHealthPlan || '';
+    document.getElementById('setup-deduct-dental').value     = profile.deductDental || '';
+    document.getElementById('setup-deduct-vt').value         = profile.deductValeTransporte || '';
+    document.getElementById('setup-deduct-other').value      = profile.deductOther || '';
+    document.getElementById('setup-benefit-va').value        = profile.benefitVA || '';
+    document.getElementById('setup-benefit-vr').value        = profile.benefitVR || '';
+    document.getElementById('setup-benefit-other').value     = profile.benefitOther || '';
 
     // Pre-fill step 3: goals & assets
     document.getElementById('setup-savings-goal').value = profile.savingsGoal || '';
@@ -859,8 +868,11 @@ const SetupWizard = (() => {
       Store.profile.set({ name: name || 'Matthew', salary: salary || 7500, workStartDate });
     }
     if (fromStep === 2) {
-      // Save employment & salary details
+      // Save income schedule + employment & salary details
       Store.profile.set({
+        adiantamentoAmount:    Number(document.getElementById('setup-adiantamento').value) || 0,
+        adiantamentoDay:       Number(document.getElementById('setup-adiantamento-day').value) || 15,
+        salaryDay:             Number(document.getElementById('setup-salary-day').value) || 30,
         vacationDaysTotal:     Number(document.getElementById('setup-vacation-days').value) || 30,
         vacationPeriods:       Number(document.getElementById('setup-vacation-periods').value) || 3,
         vacationDaysToSell:    Number(document.getElementById('setup-vacation-sell').value) || 0,
@@ -895,13 +907,14 @@ const SetupWizard = (() => {
     }
     if (fromStep === 5) {
       saveCardsFromDOM();
+      saveSetupFaturas();
     }
     showStep(fromStep + 1);
   }
 
   function back(fromStep) {
     if (fromStep === 6) saveCategoriesFromDOM();
-    if (fromStep === 5) saveCardsFromDOM();
+    if (fromStep === 5) { saveCardsFromDOM(); saveSetupFaturas(); }
     if (fromStep === 4) saveAccountsFromDOM();
     showStep(fromStep - 1);
   }
@@ -961,7 +974,7 @@ const SetupWizard = (() => {
     el.innerHTML = cards.map((c, i) => `
       <div class="setup-card-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
         <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
-          <input type="text" class="form-input setup-card-name" value="${c.name || ''}" placeholder="Card name (e.g. Nubank)" style="flex:1" />
+          <input type="text" class="form-input setup-card-name" value="${c.name || ''}" placeholder="Card name (e.g. Nubank)" style="flex:1" oninput="SetupWizard.renderSetupFaturas()" />
           <input type="text" class="form-input setup-card-brand" value="${c.brand || ''}" placeholder="Brand" style="width:100px" />
         </div>
         <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
@@ -1006,31 +1019,99 @@ const SetupWizard = (() => {
 
   function addCard() {
     saveCardsFromDOM();
-    cards.push({ name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
+    // Generate ID immediately so faturas can reference this card before finish()
+    cards.push({ id: crypto.randomUUID(), name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
     renderCards();
+    renderSetupFaturas();
   }
 
   function removeCard(idx) {
     saveCardsFromDOM();
     cards.splice(idx, 1);
     renderCards();
+    renderSetupFaturas();
   }
 
   function saveCardsFromDOM() {
     const rows = document.querySelectorAll('.setup-card-row');
     cards = Array.from(rows).map((row, i) => ({
-      ...(cards[i]?.id ? { id: cards[i].id } : {}),
-      name: row.querySelector('.setup-card-name').value.trim(),
-      brand: row.querySelector('.setup-card-brand').value.trim(),
-      lastFourDigits: row.querySelector('.setup-card-last4').value.trim(),
-      limit: parseFloat(row.querySelector('.setup-card-limit').value) || 0,
-      currentBalance: parseFloat(row.querySelector('.setup-card-balance').value) || 0,
-      closingDay: parseInt(row.querySelector('.setup-card-closing').value) || '',
-      dueDay: parseInt(row.querySelector('.setup-card-due').value) || '',
-      interestRate: parseFloat(row.querySelector('.setup-card-interest').value) || '',
-      annualFee: parseFloat(row.querySelector('.setup-card-annual-fee').value) || 0,
+      // Always preserve the ID (generated in addCard or from existing data)
+      ...(cards[i]?.id ? { id: cards[i].id } : { id: crypto.randomUUID() }),
+      name:             row.querySelector('.setup-card-name').value.trim(),
+      brand:            row.querySelector('.setup-card-brand').value.trim(),
+      lastFourDigits:   row.querySelector('.setup-card-last4').value.trim(),
+      limit:            parseFloat(row.querySelector('.setup-card-limit').value) || 0,
+      currentBalance:   parseFloat(row.querySelector('.setup-card-balance').value) || 0,
+      closingDay:       parseInt(row.querySelector('.setup-card-closing').value) || '',
+      dueDay:           parseInt(row.querySelector('.setup-card-due').value) || '',
+      interestRate:     parseFloat(row.querySelector('.setup-card-interest').value) || '',
+      annualFee:        parseFloat(row.querySelector('.setup-card-annual-fee').value) || 0,
       paymentAccountId: row.querySelector('.setup-card-payment-account').value || ''
     }));
+    renderSetupFaturas();
+  }
+
+  // ── Setup fatura entry ────────────────────────────────────
+
+  function renderSetupFaturas() {
+    const section = document.getElementById('setup-faturas-section');
+    const tableEl = document.getElementById('setup-faturas-table');
+    if (!section || !tableEl) return;
+
+    const namedCards = cards.filter(c => c.name);
+    if (namedCards.length === 0) {
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+
+    const now = new Date();
+    const months = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    const allFaturas = Store.data.getFaturas();
+
+    tableEl.innerHTML = namedCards.map(card => {
+      const cardFaturas = allFaturas.filter(f => f.cardId === card.id);
+      return `
+        <div style="margin-bottom:var(--space-md);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md)">
+          <div style="font-weight:600;font-size:13px;margin-bottom:var(--space-sm)">
+            💳 ${App.esc(card.name)}${card.lastFourDigits ? ' *' + App.esc(card.lastFourDigits) : ''}
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-sm)">
+            ${months.map(mo => {
+              const existing = cardFaturas.find(f => f.month === mo);
+              return `
+                <div>
+                  <div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:0.04em">${Fmt.monthYear(mo + '-01')}</div>
+                  <input type="number" class="form-input setup-fatura-input"
+                    data-card-id="${card.id}" data-month="${mo}"
+                    value="${existing ? existing.amount : ''}"
+                    placeholder="0"
+                    style="height:36px;font-size:13px;padding:6px 10px;text-align:right"
+                    inputmode="decimal" step="0.01" />
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function saveSetupFaturas() {
+    const inputs = document.querySelectorAll('.setup-fatura-input');
+    inputs.forEach(input => {
+      const cardId = input.dataset.cardId;
+      const month  = input.dataset.month;
+      const val    = input.value;
+      if (cardId && month) {
+        API.setFatura(cardId, month, val === '' ? null : val);
+      }
+    });
   }
 
   // ── Categories / Budgets management ────────────────────────
@@ -1091,7 +1172,7 @@ const SetupWizard = (() => {
     App.toast('Setup complete! Start tracking your finances.', 'success');
   }
 
-  return { init, next, back, addAccount, removeAccount, addCard, removeCard, finish };
+  return { init, next, back, addAccount, removeAccount, addCard, removeCard, finish, renderSetupFaturas };
 })();
 
 // ── Start ──────────────────────────────────────────────────

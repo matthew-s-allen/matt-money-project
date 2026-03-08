@@ -691,6 +691,45 @@ Critical extraction rules:
     return { success: true };
   }
 
+  // ── Cash Flow (monthly planning) ──────────────────────────
+
+  function getCashFlowMonth(month) {
+    const all = Store.data.getCashFlow();
+    return all.find(m => m.month === month) || { month, plannedExpenses: [] };
+  }
+
+  function saveCashFlowMonth(month, updates) {
+    const all = Store.data.getCashFlow();
+    const idx = all.findIndex(m => m.month === month);
+    const current = idx >= 0 ? all[idx] : { month, plannedExpenses: [] };
+    const entry = { ...current, ...updates, month };
+    if (idx >= 0) all[idx] = entry; else all.push(entry);
+    Store.data.setCashFlow(all);
+    Store.cache.invalidateAll();
+    return entry;
+  }
+
+  function addCashFlowExpense(month, expense) {
+    const mdata = getCashFlowMonth(month);
+    const expenses = [...(mdata.plannedExpenses || [])];
+    const entry = { id: crypto.randomUUID(), ...expense };
+    expenses.push(entry);
+    saveCashFlowMonth(month, { plannedExpenses: expenses });
+    return entry;
+  }
+
+  function updateCashFlowExpense(month, id, updates) {
+    const mdata = getCashFlowMonth(month);
+    const expenses = (mdata.plannedExpenses || []).map(e => e.id === id ? { ...e, ...updates } : e);
+    saveCashFlowMonth(month, { plannedExpenses: expenses });
+  }
+
+  function deleteCashFlowExpense(month, id) {
+    const mdata = getCashFlowMonth(month);
+    const expenses = (mdata.plannedExpenses || []).filter(e => e.id !== id);
+    saveCashFlowMonth(month, { plannedExpenses: expenses });
+  }
+
   // ── Compatibility stubs (no-ops since data is always local) ──
 
   async function flushQueue()  { return; }
@@ -710,6 +749,7 @@ Critical extraction rules:
     calcSalaryBreakdown, calcINSS, calcIRRF,
     getInstallments, upsertInstallment, deleteInstallment,
     getFaturas, setFatura, getFaturasForCard, getFuturasFatura,
+    getCashFlowMonth, saveCashFlowMonth, addCashFlowExpense, updateCashFlowExpense, deleteCashFlowExpense,
     syncBackup, selectBackupFolder, shareBackup, downloadSnapshot, startFresh,
     flushQueue, initBackend
   };

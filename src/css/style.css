@@ -1270,3 +1270,47 @@ input[type="range"]::-moz-range-thumb {
 /* ── Surface helpers (dark specific) ──────────────────────── */
 [data-theme="dark"] .surface-2 { background: #1c1c1c; }
 [data-theme="dark"] .surface-3 { background: #242424; }
+
+/* ── Cash Flow View ────────────────────────────────────────── */
+.cf-income-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border);
+}
+.cf-income-row:last-of-type { border-bottom: none; }
+
+.cf-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-sm);
+  margin-top: var(--space-xs);
+}
+
+.cf-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin-bottom: var(--space-sm);
+}
+
+.cf-checkpoint {
+  padding: var(--space-md);
+  background: var(--primary-glow);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+/* ── Setup wizard progress — compact on small screens ──────── */
+@media (max-width: 380px) {
+  .setup-step-dot { width: 22px; height: 22px; font-size: 10px; }
+  .setup-step-line { width: 20px; }
+}

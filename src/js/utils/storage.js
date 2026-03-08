@@ -89,6 +89,10 @@ const Store = (() => {
     getFaturas()           { return raw.get('data_faturas', []); },
     setFaturas(v)          { raw.set('data_faturas', v); },
 
+    // ── Cash Flow (per month planned income/expenses) ─────────
+    getCashFlow()          { return raw.get('data_cash_flow', []); },
+    setCashFlow(v)         { raw.set('data_cash_flow', v); },
+
     // Export everything as a single JSON blob
     exportAll() {
       return {
@@ -103,6 +107,7 @@ const Store = (() => {
         creditCards:   data.getCreditCards(),
         installments:  data.getInstallments(),
         faturas:       data.getFaturas(),
+        cashFlow:      data.getCashFlow(),
         setupDone:     data.isSetupDone(),
         profile:       profile.get(),
         config:        config.get()
@@ -121,6 +126,7 @@ const Store = (() => {
       if (blob.creditCards)   data.setCreditCards(blob.creditCards);
       if (blob.installments)  data.setInstallments(blob.installments);
       if (blob.faturas)       data.setFaturas(blob.faturas);
+      if (blob.cashFlow)      data.setCashFlow(blob.cashFlow);
       if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
       if (blob.profile)  profile.set(blob.profile);
       if (blob.config)   config.set(blob.config);
@@ -179,7 +185,11 @@ const Store = (() => {
         // Benefits (monthly values received on top of salary)
         benefitVA: 0,
         benefitVR: 0,
-        benefitOther: 0
+        benefitOther: 0,
+        // Income schedule (for cash flow planning)
+        adiantamentoAmount: 0,  // 0 = not set, auto-calculated when displaying
+        adiantamentoDay: 15,
+        salaryDay: 30
       });
     },
     set(updates) { raw.set('profile', { ...profile.get(), ...updates }); }
