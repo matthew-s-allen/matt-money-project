@@ -167,7 +167,7 @@ const API = (() => {
     const geminiKey = Store.config.val('geminiKey');
     if (!geminiKey) throw new Error('Gemini API key not set. Add it in Settings ⚙️ (it\'s free from aistudio.google.com).');
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
 
     const prompt = `You are a Brazilian financial assistant. Analyze this receipt, note, or financial document image and extract the following information in JSON format.
 
