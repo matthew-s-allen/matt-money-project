@@ -176,19 +176,29 @@ const API = (() => {
   const RECEIPT_SCHEMA = {
     type: 'object',
     properties: {
-      merchant:    { type: 'string' },
-      date:        { type: 'string', description: 'YYYY-MM-DD' },
-      total:       { type: 'number' },
-      category:    { type: 'string', enum: ['food','transport','housing','health','education','subscriptions','clothing','entertainment','debt','savings','other'] },
-      description: { type: 'string' },
+      merchant:       { type: 'string' },
+      store_cnpj:     { type: 'string', description: 'CNPJ of the emitter if visible' },
+      date:           { type: 'string', description: 'YYYY-MM-DD' },
+      time:           { type: 'string', description: 'HH:MM in 24h format' },
+      total:          { type: 'number' },
+      taxes:          { type: 'number', description: 'Total tax amount (Tributos Totais) if shown' },
+      discount_total: { type: 'number', description: 'Total discount amount applied to the whole receipt' },
+      payment_method: { type: 'string', description: 'e.g. Cartao Credito, Cartao Debito, Dinheiro, Pix' },
+      nfe_key:        { type: 'string', description: '44-digit NF-e / NFC-e access key if visible' },
+      category:       { type: 'string', enum: ['food','transport','housing','health','education','subscriptions','clothing','entertainment','debt','savings','other'] },
+      description:    { type: 'string' },
       items: {
         type: 'array',
         items: {
           type: 'object',
           properties: {
-            name:  { type: 'string' },
-            qty:   { type: 'number' },
-            price: { type: 'number' },
+            name:       { type: 'string' },
+            barcode:    { type: 'string', description: 'Product barcode / EAN / CODIGO if visible' },
+            qty:        { type: 'number' },
+            unit:       { type: 'string', description: 'Unit of measure: UN, KG, L, ML, etc.' },
+            unit_price: { type: 'number', description: 'Price per single unit before discounts (VL UNIT)' },
+            price:      { type: 'number', description: 'Final line total after any discounts (VL TOTAL)' },
+            discount:   { type: 'number', description: 'Discount amount applied to this specific line item, 0 if none' },
           },
           required: ['name', 'qty', 'price'],
         },
@@ -200,9 +210,18 @@ const API = (() => {
     required: ['merchant','date','total','category','description','items','type','currency','confidence'],
   };
 
-  const RECEIPT_PROMPT = `You are a Brazilian financial assistant. Analyze this receipt, note, or financial document image and extract the structured data.
-Use today's date if the date is not visible. Default currency to BRL. Set confidence to "low" if the image is not a recognisable financial document.
-For handwritten notes, extract any financial information present.`;
+  const RECEIPT_PROMPT = `You are a Brazilian financial assistant specializing in exhaustive receipt data extraction.
+Analyze this receipt image and extract ALL available structured data — leave nothing out.
+
+Critical extraction rules:
+- Capture EVERY line item without exception. Long supermarket receipts may have 20+ items — extract them all.
+- For each item capture: the barcode (CODIGO), full product name (DESCRICAO), quantity (QTDE), unit (UN/KG/L/ML), unit price (VL UNIT), line total (VL TOTAL), and any discount (DESCONTO) applied to that specific line.
+- Extract the 44-digit NF-e / NFC-e access key if visible at the bottom.
+- Extract the emitter CNPJ.
+- Extract the payment method (Cartao Credito/Debito, Dinheiro, Pix, etc.).
+- Extract taxes (Tributos Totais) and total savings/discounts if shown.
+- Use today's date if not visible. Default currency to BRL.
+- Set confidence to "low" only if the image is clearly not a financial document.`;
 
   async function parseReceiptWithGemini(base64Image, mimeType = 'image/jpeg') {
     const geminiKey = Store.config.val('geminiKey');
@@ -217,10 +236,9 @@ For handwritten notes, extract any financial information present.`;
       }],
       generationConfig: {
         temperature: 0.1,
-        maxOutputTokens: 1024,
         response_mime_type: 'application/json',
         response_schema: RECEIPT_SCHEMA,
-      },
+        maxOutputTokens: 2048,
     });
 
     const FALLBACK_CODES = new Set([429, 503, 404]);
