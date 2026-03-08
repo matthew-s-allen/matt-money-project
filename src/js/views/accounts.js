@@ -131,7 +131,7 @@ const Accounts = (() => {
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
         </div>
         <div class="asset-info" style="flex:1;min-width:0">
-          <div class="asset-name">${c.name || 'Credit Card'}</div>
+          <div class="asset-name">${c.name || 'Credit Card'}${c.lastFourDigits ? ` *${App.esc(c.lastFourDigits)}` : ''}</div>
           <div class="asset-sub">
             ${c.closingDay ? 'Closes day ' + c.closingDay : ''}
             ${txCount ? ' · ' + txCount + ' charges' : ''}
@@ -239,7 +239,7 @@ const Accounts = (() => {
 
   // ── Add/Edit Card Modal ─────────────────────────────────────
   function addCard() {
-    openCardModal({ name: '', brand: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '' });
+    openCardModal({ name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', minPayment: '', annualFee: 0, paymentAccountId: '' });
   }
 
   function editCard(c) {
@@ -248,6 +248,7 @@ const Accounts = (() => {
 
   function openCardModal(c) {
     const isNew = !c.id;
+    const accounts = Store.data.getAccounts();
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
@@ -259,35 +260,58 @@ const Accounts = (() => {
           <label class="form-label">Card name</label>
           <input type="text" id="card-name" class="form-input" value="${c.name || ''}" placeholder="e.g. Nubank Visa" />
         </div>
-        <div class="form-group">
-          <label class="form-label">Brand / Issuer</label>
-          <input type="text" id="card-brand" class="form-input" value="${c.brand || ''}" placeholder="e.g. Visa, Mastercard" />
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Brand / Issuer</label>
+            <input type="text" id="card-brand" class="form-input" value="${c.brand || ''}" placeholder="e.g. Visa" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Last 4 digits</label>
+            <input type="text" id="card-last4" class="form-input" value="${c.lastFourDigits || ''}" placeholder="1234" maxlength="4" inputmode="numeric" />
+          </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Credit limit (R$)</label>
-          <input type="number" id="card-limit" class="form-input" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Current balance / bill (R$)</label>
-          <input type="number" id="card-balance" class="form-input" value="${c.currentBalance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" />
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Credit limit (R$)</label>
+            <input type="number" id="card-limit" class="form-input" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Current bill (R$)</label>
+            <input type="number" id="card-balance" class="form-input" value="${c.currentBalance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" />
+          </div>
         </div>
         <div class="grid-2">
           <div class="form-group">
             <label class="form-label">Closing day</label>
-            <input type="number" id="card-closing" class="form-input" value="${c.closingDay || ''}" placeholder="15" min="1" max="31" />
+            <input type="number" id="card-closing" class="form-input" value="${c.closingDay || ''}" placeholder="15" min="1" max="31" inputmode="numeric" />
           </div>
           <div class="form-group">
             <label class="form-label">Due day</label>
-            <input type="number" id="card-due" class="form-input" value="${c.dueDay || ''}" placeholder="25" min="1" max="31" />
+            <input type="number" id="card-due" class="form-input" value="${c.dueDay || ''}" placeholder="25" min="1" max="31" inputmode="numeric" />
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Interest rate (% per month)</label>
-          <input type="number" id="card-interest" class="form-input" value="${c.interestRate || ''}" placeholder="14.5" step="0.1" inputmode="decimal" />
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Interest rate (%/mo)</label>
+            <input type="number" id="card-interest" class="form-input" value="${c.interestRate || ''}" placeholder="14.5" step="0.1" inputmode="decimal" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Min. payment (R$)</label>
+            <input type="number" id="card-min-payment" class="form-input" value="${c.minPayment || ''}" placeholder="50" inputmode="decimal" />
+          </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Minimum payment (R$)</label>
-          <input type="number" id="card-min-payment" class="form-input" value="${c.minPayment || ''}" placeholder="50" inputmode="decimal" />
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Annual fee (R$)</label>
+            <input type="number" id="card-annual-fee" class="form-input" value="${c.annualFee || ''}" placeholder="0" inputmode="decimal" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Pays from account</label>
+            <select id="card-payment-account" class="form-input">
+              <option value="">None</option>
+              ${accounts.map(a => `<option value="${a.id}" ${c.paymentAccountId === a.id ? 'selected' : ''}>${App.esc(a.name || a.bank || 'Account')}</option>`).join('')}
+            </select>
+          </div>
         </div>
 
         <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
@@ -304,18 +328,21 @@ const Accounts = (() => {
   async function saveCard(existingId, btn) {
     const name = document.getElementById('card-name').value.trim();
     const brand = document.getElementById('card-brand').value.trim();
+    const lastFourDigits = document.getElementById('card-last4').value.trim();
     const limit = parseFloat(document.getElementById('card-limit').value) || 0;
     const currentBalance = parseFloat(document.getElementById('card-balance').value) || 0;
     const closingDay = parseInt(document.getElementById('card-closing').value) || '';
     const dueDay = parseInt(document.getElementById('card-due').value) || '';
     const interestRate = parseFloat(document.getElementById('card-interest').value) || '';
     const minPayment = parseFloat(document.getElementById('card-min-payment').value) || '';
+    const annualFee = parseFloat(document.getElementById('card-annual-fee').value) || 0;
+    const paymentAccountId = document.getElementById('card-payment-account').value || '';
 
     if (!name) { App.toast('Please enter a card name', 'error'); return; }
 
     btn.disabled = true; btn.textContent = 'Saving...';
     try {
-      await API.upsertCreditCard({ id: existingId || undefined, name, brand, limit, currentBalance, closingDay, dueDay, interestRate, minPayment });
+      await API.upsertCreditCard({ id: existingId || undefined, name, brand, lastFourDigits, limit, currentBalance, closingDay, dueDay, interestRate, minPayment, annualFee, paymentAccountId });
       btn.closest('.modal-overlay').remove();
       App.toast('Credit card saved', 'success');
       render();
@@ -335,71 +362,108 @@ const Accounts = (() => {
     } catch (e) { App.toast(e.message, 'error'); }
   }
 
-  // ── Future Faturas ──────────────────────────────────────────
+  // ── Future Faturas (manual per-month per-card input) ────────
+
   function renderFuturasFaturas(cards) {
-    const allFaturas = [];
-    for (const card of cards) {
-      const faturas = API.getFuturasFatura(card.id, 6);
-      faturas.forEach(f => {
-        f.cardName = card.name;
-        f.cardId = card.id;
-        // Add current balance for the first month
-        if (allFaturas.length === 0 || f.month === faturas[0].month) {
-          f.total += card.currentBalance || 0;
-          if (card.currentBalance) {
-            f.items.unshift({ description: 'Current bill', amount: card.currentBalance, installment: '' });
-          }
-        }
-      });
-      allFaturas.push(...faturas);
+    // Generate next 6 months
+    const now = new Date();
+    const months = [];
+    for (let m = 0; m < 6; m++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + m, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
 
-    // Group by month
-    const byMonth = {};
-    allFaturas.forEach(f => {
-      if (!byMonth[f.month]) byMonth[f.month] = [];
-      byMonth[f.month].push(f);
-    });
+    // Get all faturas data
+    const allManualFaturas = API.getFaturas();
 
-    const months = Object.keys(byMonth).sort().slice(0, 4);
-    if (months.length === 0) return '';
-
+    // Build card rows with monthly inputs
     return `
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
-          <span class="card-title">Upcoming Faturas</span>
-          <span class="pill pill-yellow" style="font-size:10px">Next ${months.length} months</span>
+          <span class="card-title">Future Faturas</span>
+          <span class="pill pill-yellow" style="font-size:10px">Next 6 months</span>
         </div>
-        ${months.map(month => {
-          const faturas = byMonth[month];
-          const monthTotal = faturas.reduce((s, f) => s + f.total, 0);
-          const monthLabel = Fmt.monthYear(month + '-01');
-          return `
-            <div style="margin-bottom:var(--space-md)">
-              <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--space-sm)">
-                <span style="font-size:13px;font-weight:600">${monthLabel}</span>
-                <span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--red)">${Fmt.currency(monthTotal)}</span>
-              </div>
-              ${faturas.filter(f => f.total > 0).map(f => `
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px">
-                  <span style="color:var(--text-secondary)">
-                    💳 ${App.esc(f.cardName)}
-                    ${f.closingDay ? `<span style="font-size:10px;color:var(--text-muted)">· closes ${f.closingDay} · due ${f.dueDay}</span>` : ''}
-                  </span>
-                  <span style="font-family:var(--font-mono);color:var(--red)">${Fmt.currency(f.total)}</span>
-                </div>
-                ${f.items.length > 0 ? f.items.map(item => `
-                  <div style="display:flex;justify-content:space-between;padding:2px 0 2px 20px;font-size:11px;color:var(--text-muted)">
-                    <span>${App.esc(item.description)} ${item.installment ? `<span style="font-size:10px">(${item.installment})</span>` : ''}</span>
-                    <span style="font-family:var(--font-mono)">${Fmt.currency(item.amount)}</span>
-                  </div>
-                `).join('') : ''}
-              `).join('')}
-            </div>
-          `;
-        }).join('')}
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:var(--space-md)">
+          Enter the expected fatura amount for each card per month. Installments are shown as reference.
+        </p>
+
+        <!-- Month headers -->
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:6px 4px;font-weight:600;border-bottom:1px solid var(--border);position:sticky;left:0;background:var(--bg-card);min-width:100px">Card</th>
+                ${months.map(mo => `<th style="text-align:center;padding:6px 2px;font-weight:600;border-bottom:1px solid var(--border);min-width:85px">${Fmt.monthYear(mo + '-01')}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${cards.map(card => {
+                const cardFaturas = allManualFaturas.filter(f => f.cardId === card.id);
+                const installments = API.getInstallments().filter(i => i.cardId === card.id);
+                return `
+                  <tr>
+                    <td style="padding:6px 4px;border-bottom:1px solid var(--border-light, var(--border));position:sticky;left:0;background:var(--bg-card)">
+                      <div style="font-weight:500">${App.esc(card.name)}</div>
+                      ${card.lastFourDigits ? `<div style="font-size:10px;color:var(--text-muted)">*${App.esc(card.lastFourDigits)}</div>` : ''}
+                    </td>
+                    ${months.map(mo => {
+                      const manual = cardFaturas.find(f => f.month === mo);
+                      // Calculate installment total for this month
+                      let instTotal = 0;
+                      for (const inst of installments) {
+                        const [startY, startM] = inst.startMonth.split('-').map(Number);
+                        const [moY, moM] = mo.split('-').map(Number);
+                        const diff = (moY - startY) * 12 + (moM - startM);
+                        if (diff >= 0 && diff < inst.totalInstallments) instTotal += inst.monthlyAmount;
+                      }
+                      const val = manual ? manual.amount : '';
+                      return `
+                        <td style="padding:4px 2px;border-bottom:1px solid var(--border-light, var(--border));text-align:center">
+                          <input type="number" class="form-input fatura-input"
+                            data-card-id="${card.id}" data-month="${mo}"
+                            value="${val}"
+                            placeholder="${instTotal > 0 ? Fmt.compact(instTotal) : '0'}"
+                            style="width:100%;text-align:center;font-size:12px;padding:4px 2px;height:32px"
+                            inputmode="decimal" step="0.01"
+                            onchange="Accounts.saveFatura('${card.id}','${mo}',this.value)" />
+                          ${instTotal > 0 ? `<div style="font-size:9px;color:var(--text-muted);margin-top:1px">parcelas: ${Fmt.compact(instTotal)}</div>` : ''}
+                        </td>
+                      `;
+                    }).join('')}
+                  </tr>
+                `;
+              }).join('')}
+              <tr style="font-weight:600">
+                <td style="padding:8px 4px;position:sticky;left:0;background:var(--bg-card)">Total</td>
+                ${months.map(mo => {
+                  let moTotal = 0;
+                  for (const card of cards) {
+                    const manual = allManualFaturas.find(f => f.cardId === card.id && f.month === mo);
+                    if (manual) {
+                      moTotal += manual.amount;
+                    } else {
+                      // Fall back to installment total
+                      const installments = API.getInstallments().filter(i => i.cardId === card.id);
+                      for (const inst of installments) {
+                        const [startY, startM] = inst.startMonth.split('-').map(Number);
+                        const [moY, moM] = mo.split('-').map(Number);
+                        const diff = (moY - startY) * 12 + (moM - startM);
+                        if (diff >= 0 && diff < inst.totalInstallments) moTotal += inst.monthlyAmount;
+                      }
+                    }
+                  }
+                  return `<td style="padding:8px 2px;text-align:center;font-family:var(--font-mono);color:var(--red)">${moTotal > 0 ? Fmt.currency(moTotal) : '-'}</td>`;
+                }).join('')}
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     `;
+  }
+
+  function saveFatura(cardId, month, value) {
+    API.setFatura(cardId, month, value);
   }
 
   // ── Installments (Parcelas) ─────────────────────────────────
@@ -554,6 +618,7 @@ const Accounts = (() => {
   return {
     render, addAccount, editAccount, saveAccount, deleteAccount,
     addCard, editCard, saveCard, deleteCard,
-    addInstallment, editInstallment, saveInstallment, deleteInstallment
+    addInstallment, editInstallment, saveInstallment, deleteInstallment,
+    saveFatura
   };
 })();

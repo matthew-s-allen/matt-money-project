@@ -574,11 +574,36 @@ Critical extraction rules:
     return { success: true };
   }
 
-  // Get future faturas for a card, projected N months forward
+  // ── Manual Faturas (per card per month) ──────────────────────
+
+  function getFaturas() {
+    return Store.data.getFaturas();
+  }
+
+  function setFatura(cardId, month, amount) {
+    const all = getFaturas();
+    const idx = all.findIndex(f => f.cardId === cardId && f.month === month);
+    if (amount === 0 || amount === null || amount === undefined || amount === '') {
+      // Remove entry if zeroed
+      if (idx >= 0) all.splice(idx, 1);
+    } else {
+      const entry = { cardId, month, amount: parseFloat(amount) || 0 };
+      if (idx >= 0) all[idx] = entry; else all.push(entry);
+    }
+    Store.data.setFaturas(all);
+    Store.cache.invalidateAll();
+  }
+
+  function getFaturasForCard(cardId) {
+    return getFaturas().filter(f => f.cardId === cardId);
+  }
+
+  // Get future faturas combining manual entries + installment projections
   function getFuturasFatura(cardId, months = 6) {
     const card = Store.data.getCreditCards().find(c => c.id === cardId);
     if (!card) return [];
 
+    const manualFaturas = getFaturasForCard(cardId);
     const installments = getInstallments().filter(i => i.cardId === cardId);
     const now = new Date();
     const faturas = [];
@@ -586,7 +611,10 @@ Critical extraction rules:
     for (let m = 0; m < months; m++) {
       const faturaDate = new Date(now.getFullYear(), now.getMonth() + m, 1);
       const monthKey = `${faturaDate.getFullYear()}-${String(faturaDate.getMonth() + 1).padStart(2, '0')}`;
-      let total = 0;
+
+      // Manual fatura amount takes priority
+      const manual = manualFaturas.find(f => f.month === monthKey);
+      let installmentTotal = 0;
       const items = [];
 
       for (const inst of installments) {
@@ -601,11 +629,19 @@ Critical extraction rules:
             amount: inst.monthlyAmount,
             installment: `${installmentNum}/${inst.totalInstallments}`
           });
-          total += inst.monthlyAmount;
+          installmentTotal += inst.monthlyAmount;
         }
       }
 
-      faturas.push({ month: monthKey, total, items, closingDay: card.closingDay, dueDay: card.dueDay });
+      faturas.push({
+        month: monthKey,
+        manualAmount: manual ? manual.amount : null,
+        installmentTotal,
+        total: manual ? manual.amount : installmentTotal,
+        items,
+        closingDay: card.closingDay,
+        dueDay: card.dueDay
+      });
     }
 
     return faturas;
@@ -672,7 +708,8 @@ Critical extraction rules:
     parseReceiptWithGemini,
     exportData, importData,
     calcSalaryBreakdown, calcINSS, calcIRRF,
-    getInstallments, upsertInstallment, deleteInstallment, getFuturasFatura,
+    getInstallments, upsertInstallment, deleteInstallment,
+    getFaturas, setFatura, getFaturasForCard, getFuturasFatura,
     syncBackup, selectBackupFolder, shareBackup, downloadSnapshot, startFresh,
     flushQueue, initBackend
   };
