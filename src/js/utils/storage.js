@@ -169,7 +169,7 @@ const Store = (() => {
   const profile = {
     get() {
       return raw.get('profile', {
-        name: 'Matthew', salary: 7500, fgts: 68000,
+        name: 'Matthew', employerName: '', salary: 7500, fgts: 68000,
         carValue: 50000, debtTotal: 14000,
         savingsGoal: 500000, targetYears: 15,
         // Employment

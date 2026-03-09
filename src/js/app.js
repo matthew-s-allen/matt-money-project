@@ -140,6 +140,7 @@ const App = (() => {
 
     document.getElementById('settings-gemini-key').value       = cfg.geminiKey || '';
     document.getElementById('settings-name').value             = profile.name || '';
+    document.getElementById('settings-employer').value         = profile.employerName || '';
     document.getElementById('settings-salary').value           = profile.salary || '';
     document.getElementById('settings-savings-goal').value     = profile.savingsGoal || '';
     document.getElementById('settings-target-years').value     = profile.targetYears || '';
@@ -210,6 +211,7 @@ const App = (() => {
 
     Store.profile.set({
       name:                 document.getElementById('settings-name').value.trim() || 'Matthew',
+      employerName:         document.getElementById('settings-employer').value.trim(),
       salary:               Number(document.getElementById('settings-salary').value) || 7500,
       savingsGoal:          Number(document.getElementById('settings-savings-goal').value) || 500000,
       targetYears:          Number(document.getElementById('settings-target-years').value) || 15,
@@ -732,6 +734,7 @@ const SetupWizard = (() => {
     // Pre-fill step 1: profile
     const profile = Store.profile.get();
     document.getElementById('setup-name').value = profile.name || '';
+    document.getElementById('setup-employer').value = profile.employerName || '';
     document.getElementById('setup-salary').value = profile.salary || '';
     document.getElementById('setup-work-start').value = profile.workStartDate || '';
 
@@ -781,6 +784,12 @@ const SetupWizard = (() => {
     salaryInputs.forEach(id => {
       const el = document.getElementById(id);
       if (el) el.addEventListener('input', updateSalaryPreview);
+    });
+
+    // Live goal projection hint
+    ['setup-savings-goal','setup-target-years'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', updateGoalHint);
     });
 
     renderAccounts();
@@ -856,16 +865,44 @@ const SetupWizard = (() => {
         dot.classList.toggle('done', i < step);
       }
     }
-    // Show salary preview when entering step 2
+    // Hide intro subtitle + import on steps 2+
+    const subtitle = document.getElementById('setup-intro-subtitle');
+    const importSec = document.getElementById('setup-import-section');
+    if (subtitle) subtitle.classList.toggle('hidden', step > 1);
+    if (importSec) importSec.classList.toggle('hidden', step > 1);
+
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
     if (step === 2) updateSalaryPreview();
+    if (step === 3) updateGoalHint();
+  }
+
+  function updateGoalHint() {
+    const hint = document.getElementById('setup-goal-hint');
+    if (!hint) return;
+    const profile = Store.profile.get();
+    const gross = profile.salary || 0;
+    if (!gross) { hint.textContent = ''; return; }
+    const goal = Number(document.getElementById('setup-savings-goal')?.value) || 0;
+    const years = Number(document.getElementById('setup-target-years')?.value) || 0;
+    if (goal && years) {
+      const months = years * 12;
+      const needed = goal / months;
+      const pct = ((needed / gross) * 100).toFixed(0);
+      hint.textContent = `To reach ${Fmt.currency(goal)} in ${years} years you need to save ~${Fmt.currency(needed)}/mo (${pct}% of gross).`;
+    } else {
+      hint.textContent = '';
+    }
   }
 
   function next(fromStep) {
     if (fromStep === 1) {
       const name = document.getElementById('setup-name').value.trim();
+      const employerName = document.getElementById('setup-employer').value.trim();
       const salary = Number(document.getElementById('setup-salary').value) || 0;
       const workStartDate = document.getElementById('setup-work-start').value || '';
-      Store.profile.set({ name: name || 'Matthew', salary: salary || 7500, workStartDate });
+      Store.profile.set({ name: name || 'Matthew', employerName, salary: salary || 7500, workStartDate });
     }
     if (fromStep === 2) {
       // Save income schedule + employment & salary details
@@ -924,21 +961,25 @@ const SetupWizard = (() => {
     const el = document.getElementById('setup-accounts-list');
     el.innerHTML = accounts.map((a, i) => `
       <div class="setup-account-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
-        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
-          <input type="text" class="form-input setup-acct-name" value="${a.name || ''}" placeholder="Account name" style="flex:1" />
-          <select class="form-input setup-acct-type" style="width:auto">
+        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">
+          <input type="text" class="form-input setup-acct-name" value="${a.name || ''}" placeholder="e.g. Nubank" style="flex:1;min-width:0" />
+          <select class="form-input setup-acct-type" style="width:110px;flex-shrink:0">
             <option value="checking" ${a.type === 'checking' ? 'selected' : ''}>Checking</option>
             <option value="savings" ${a.type === 'savings' ? 'selected' : ''}>Savings</option>
             <option value="investment" ${a.type === 'investment' ? 'selected' : ''}>Investment</option>
           </select>
         </div>
         <div style="display:flex;gap:var(--space-sm);align-items:center">
-          <input type="text" class="form-input setup-acct-bank" value="${a.bank || ''}" placeholder="Bank name" style="flex:1" />
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:13px">R$</span>
-            <input type="number" class="form-input setup-acct-balance" value="${a.balance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" style="padding-left:32px" />
+          <input type="text" class="form-input setup-acct-bank" value="${a.bank || ''}" placeholder="Bank" style="flex:1;min-width:0" />
+          <div style="position:relative;width:120px;flex-shrink:0">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px">R$</span>
+            <input type="number" class="form-input setup-acct-balance" value="${a.balance || ''}" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:32px" />
           </div>
-          ${accounts.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeAccount(${i})" style="color:var(--red);padding:8px">✕</button>` : ''}
+          ${accounts.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeAccount(${i})" style="color:var(--red);padding:6px 10px;flex-shrink:0" aria-label="Remove">✕</button>` : ''}
+        </div>
+        <div style="margin-top:var(--space-sm);display:flex;align-items:center;gap:var(--space-sm)">
+          <input type="checkbox" class="setup-acct-primary" id="acct-primary-${i}" ${a.isPrimary ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer" />
+          <label for="acct-primary-${i}" style="font-size:12px;color:var(--text-secondary);cursor:pointer">Primary account (salary lands here)</label>
         </div>
       </div>
     `).join('');
@@ -963,7 +1004,8 @@ const SetupWizard = (() => {
       name: row.querySelector('.setup-acct-name').value.trim(),
       bank: row.querySelector('.setup-acct-bank').value.trim(),
       type: row.querySelector('.setup-acct-type').value,
-      balance: parseFloat(row.querySelector('.setup-acct-balance').value) || 0
+      balance: parseFloat(row.querySelector('.setup-acct-balance').value) || 0,
+      isPrimary: row.querySelector('.setup-acct-primary')?.checked || false
     }));
   }
 
@@ -973,45 +1015,49 @@ const SetupWizard = (() => {
     const el = document.getElementById('setup-cards-list');
     el.innerHTML = cards.map((c, i) => `
       <div class="setup-card-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
-        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
-          <input type="text" class="form-input setup-card-name" value="${c.name || ''}" placeholder="Card name (e.g. Nubank)" style="flex:1" oninput="SetupWizard.renderSetupFaturas()" />
-          <input type="text" class="form-input setup-card-brand" value="${c.brand || ''}" placeholder="Brand" style="width:100px" />
+        <!-- Row 1: Name + Brand -->
+        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">
+          <input type="text" class="form-input setup-card-name" value="${c.name || ''}" placeholder="Card name (e.g. Nubank)" style="flex:1;min-width:0" oninput="SetupWizard.renderSetupFaturas()" />
+          <input type="text" class="form-input setup-card-brand" value="${c.brand || ''}" placeholder="Visa/MC/Elo" style="width:90px;flex-shrink:0" />
         </div>
+        <!-- Row 2: Last4 + Limit + Current balance -->
         <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
-          <input type="text" class="form-input setup-card-last4" value="${c.lastFourDigits || ''}" placeholder="Last 4 digits" maxlength="4" style="width:90px" inputmode="numeric" />
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">Limit</span>
-            <input type="number" class="form-input setup-card-limit" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" style="padding-left:42px" />
+          <input type="text" class="form-input setup-card-last4" value="${c.lastFourDigits || ''}" placeholder="**** 1234" maxlength="4" style="width:80px;flex-shrink:0" inputmode="numeric" />
+          <div style="position:relative;flex:1;min-width:0">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">LIMIT</span>
+            <input type="number" class="form-input setup-card-limit" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" style="padding-left:46px" />
           </div>
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">Bill</span>
-            <input type="number" class="form-input setup-card-balance" value="${c.currentBalance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" style="padding-left:30px" />
-          </div>
-        </div>
-        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Closes</span>
-            <input type="number" class="form-input setup-card-closing" value="${c.closingDay || ''}" placeholder="15" min="1" max="31" style="padding-left:48px" inputmode="numeric" />
-          </div>
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Due</span>
-            <input type="number" class="form-input setup-card-due" value="${c.dueDay || ''}" placeholder="25" min="1" max="31" style="padding-left:34px" inputmode="numeric" />
-          </div>
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Rate%</span>
-            <input type="number" class="form-input setup-card-interest" value="${c.interestRate || ''}" placeholder="14.5" step="0.1" style="padding-left:44px" inputmode="decimal" />
+          <div style="position:relative;flex:1;min-width:0">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">BAL</span>
+            <input type="number" class="form-input setup-card-balance" value="${c.currentBalance || ''}" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:36px" />
           </div>
         </div>
+        <!-- Row 3: Closing day + Due day + Interest rate -->
+        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
+          <div style="position:relative;flex:1;min-width:0">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">CLOSES</span>
+            <input type="number" class="form-input setup-card-closing" value="${c.closingDay || ''}" placeholder="15" min="1" max="31" style="padding-left:52px" inputmode="numeric" />
+          </div>
+          <div style="position:relative;flex:1;min-width:0">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">DUE</span>
+            <input type="number" class="form-input setup-card-due" value="${c.dueDay || ''}" placeholder="25" min="1" max="31" style="padding-left:38px" inputmode="numeric" />
+          </div>
+          <div style="position:relative;flex:1;min-width:0">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">RATE%</span>
+            <input type="number" class="form-input setup-card-interest" value="${c.interestRate || ''}" placeholder="14.5" step="0.1" style="padding-left:46px" inputmode="decimal" />
+          </div>
+        </div>
+        <!-- Row 4: Annual fee + Payment account + Remove -->
         <div style="display:flex;gap:var(--space-sm);align-items:center">
-          <div style="position:relative;flex:1">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px">Annual fee</span>
-            <input type="number" class="form-input setup-card-annual-fee" value="${c.annualFee || ''}" placeholder="0" inputmode="decimal" style="padding-left:70px" />
+          <div style="position:relative;flex:1;min-width:0">
+            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">ANUIDADE</span>
+            <input type="number" class="form-input setup-card-annual-fee" value="${c.annualFee || ''}" placeholder="0" inputmode="decimal" style="padding-left:68px" />
           </div>
-          <select class="form-input setup-card-payment-account" style="flex:1">
-            <option value="">Pays from...</option>
+          <select class="form-input setup-card-payment-account" style="flex:1;min-width:0">
+            <option value="">Pays from…</option>
             ${accounts.map(a => `<option value="${a.id}" ${c.paymentAccountId === a.id ? 'selected' : ''}>${App.esc(a.name || a.bank || 'Account')}</option>`).join('')}
           </select>
-          ${cards.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeCard(${i})" style="color:var(--red);padding:8px">✕</button>` : ''}
+          ${cards.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeCard(${i})" style="color:var(--red);padding:6px 10px;flex-shrink:0" aria-label="Remove">✕</button>` : ''}
         </div>
       </div>
     `).join('');

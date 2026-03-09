@@ -557,6 +557,13 @@ ul, ol { list-style: none; }
   color: var(--text-secondary);
 }
 
+.form-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin-top: -2px;
+}
+
 .form-input, .form-select, .form-textarea {
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -993,9 +1000,10 @@ input[type="range"]::-moz-range-thumb {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 100dvh;
-  padding: var(--space-xl);
+  padding: var(--space-xl) var(--space-lg) var(--space-xl);
+  padding-top: max(var(--space-xl), env(safe-area-inset-top, 0px) + 24px);
   background: var(--bg-primary);
 }
 
@@ -1065,6 +1073,19 @@ input[type="range"]::-moz-range-thumb {
 .setup-step-content {
   margin-top: var(--space-md);
 }
+
+.setup-info-box {
+  background: var(--primary-glow, rgba(99,102,241,0.08));
+  border: 1px solid var(--border-accent, var(--border));
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.setup-info-box strong { color: var(--text-primary); }
+.setup-info-box .setup-info-icon { font-size: 18px; margin-bottom: var(--space-sm); display: block; }
 
 .setup-step-title {
   font-size: 18px;
@@ -1310,6 +1331,10 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ── Setup wizard progress — compact on small screens ──────── */
+@media (max-width: 420px) {
+  .setup-screen { padding-left: var(--space-md); padding-right: var(--space-md); }
+  .setup-container .grid-2 { grid-template-columns: 1fr; }
+}
 @media (max-width: 380px) {
   .setup-step-dot { width: 22px; height: 22px; font-size: 10px; }
   .setup-step-line { width: 20px; }
