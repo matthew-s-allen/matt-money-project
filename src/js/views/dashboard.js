@@ -466,6 +466,9 @@ const Dashboard = (() => {
 
     const profile = Store.profile.get();
 
+    // Pre-compute annual data so template helpers can use it
+    annualData = API.getAnnualOverview(annualYear);
+
     container.innerHTML = `
       <!-- Month Nav -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-md)">
@@ -529,15 +532,11 @@ const Dashboard = (() => {
         </div>
       </div>
 
-      <!-- 8. 6-month trend -->
-      <div class="card" style="margin-bottom:var(--space-md)">
-        <div class="card-header">
-          <span class="card-title">6-Month Trend</span>
-        </div>
-        <div class="chart-wrap" style="height:180px">
-          <canvas id="trend-chart"></canvas>
-        </div>
-      </div>
+      <!-- 8. Annual Overview (Income vs Outflows) -->
+      ${renderAnnualOverviewSection()}
+
+      <!-- 8b. Year Projection Table -->
+      ${renderYearProjectionSection()}
 
       <!-- 9. Spend distribution donut -->
       ${Object.keys(cats).length > 0 ? `
@@ -578,7 +577,8 @@ const Dashboard = (() => {
       renderTelemetry(cats, expenses);
       renderDonut(cats);
     }
-    renderTrendChart(h);
+    // Annual overview chart (annualData already computed above)
+    renderAnnualChart(document.getElementById('annual-chart-inner'));
   }
 
   // ── Monthly Commitments card ───────────────────────────────
@@ -824,68 +824,466 @@ const Dashboard = (() => {
     }).join('');
   }
 
-  function renderTrendChart(h) {
-    const canvas = document.getElementById('trend-chart');
-    if (!canvas || !h || !h.length) return;
+  // ── Annual Overview state ──────────────────────────────────
+  let annualYear = new Date().getFullYear();
+  let showPredicted = true;
+  let annualData = null;
 
-    const labels   = h.map(m => Fmt.monthShort(m.month + '-01'));
-    const incomes  = h.map(m => m.income || 0);
-    const expenses = h.map(m => m.expenses || 0);
+  function setAnnualYear(y) {
+    annualYear = y;
+    annualData = API.getAnnualOverview(annualYear);
+    renderAnnualChartOnly();
+    renderYearProjectionOnly();
+  }
+
+  function togglePredicted() {
+    showPredicted = !showPredicted;
+    renderAnnualChartOnly();
+    renderYearProjectionOnly();
+  }
+
+  function savePredictedIncome() {
+    const input = document.getElementById('predicted-income-input');
+    if (!input) return;
+    const val = parseFloat(input.value) || 0;
+    Store.profile.set({ predictedMonthlyIncome: val });
+    annualData = API.getAnnualOverview(annualYear);
+    renderAnnualChartOnly();
+    renderYearProjectionOnly();
+    App.toast('Predicted income updated', 'success');
+  }
+
+  function renderAnnualChartOnly() {
+    if (!annualData) return;
+    const wrap = document.getElementById('annual-chart-inner');
+    if (!wrap) return;
+    renderAnnualChart(wrap);
+    // Update summary
+    const sumEl = document.getElementById('annual-summary');
+    if (sumEl) sumEl.innerHTML = buildAnnualSummary();
+    // Update year label
+    const yearLabel = document.getElementById('annual-year-label');
+    if (yearLabel) yearLabel.textContent = annualYear;
+    // Update toggle state
+    const toggleEl = document.getElementById('predicted-toggle');
+    if (toggleEl) toggleEl.checked = showPredicted;
+  }
+
+  function renderAnnualChart(container) {
+    if (!annualData) return;
     const cc = getChartColors();
+    const now = new Date();
+    const currentMonthIdx = (annualYear === now.getFullYear()) ? now.getMonth() : -1;
 
-    if (charts.trend) charts.trend.destroy();
-    charts.trend = new Chart(canvas, {
+    const labels = annualData.map(m => {
+      const [, mo] = m.month.split('-');
+      return Fmt.monthShort(m.month + '-01');
+    });
+
+    // Income bars: actual for past, predicted for future (if toggle on)
+    const incomeData = annualData.map(m => {
+      if (m.actualIncome > 0) return m.actualIncome;
+      if (showPredicted && (m.isFuture || m.isCurrent)) return m.predictedIncome;
+      return m.actualIncome;
+    });
+    const incomeAlpha = annualData.map(m => m.isFuture ? 0.25 : m.isCurrent ? 0.5 : 0.6);
+
+    // Expense bar (actual tracked spending)
+    const expenseData = annualData.map(m => m.actualExpenses);
+    // Committed costs stacked on top
+    const committedData = annualData.map(m => m.committed);
+    // Surplus line
+    const surplusData = annualData.map(m => {
+      const inc = incomeData[annualData.indexOf(m)];
+      return inc - m.actualExpenses - m.committed;
+    });
+
+    if (charts.annual) charts.annual.destroy();
+
+    const canvas = document.getElementById('annual-chart-canvas');
+    if (!canvas) return;
+
+    charts.annual = new Chart(canvas, {
       type: 'bar',
       data: {
         labels,
         datasets: [
           {
             label: 'Income',
-            data: incomes,
-            backgroundColor: 'rgba(34,197,94,0.4)',
+            data: incomeData,
+            backgroundColor: annualData.map((m, i) => `rgba(34,197,94,${incomeAlpha[i]})`),
             borderColor: 'rgba(34,197,94,0.7)',
             borderWidth: 1,
-            borderRadius: 6,
-            order: 2
-          },
-          {
-            label: 'Expenses',
-            data: expenses,
-            backgroundColor: 'rgba(239,68,68,0.4)',
-            borderColor: 'rgba(239,68,68,0.7)',
-            borderWidth: 1,
-            borderRadius: 6,
+            borderRadius: 4,
+            stack: 'income',
             order: 3
           },
           {
-            label: 'Balance',
-            data: h.map(m => (m.income||0) - (m.expenses||0)),
+            label: 'Expenses',
+            data: expenseData,
+            backgroundColor: annualData.map(m => m.isFuture ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.5)'),
+            borderColor: 'rgba(239,68,68,0.6)',
+            borderWidth: 1,
+            borderRadius: 4,
+            stack: 'outflows',
+            order: 4
+          },
+          {
+            label: 'Committed',
+            data: committedData,
+            backgroundColor: annualData.map(m => m.isFuture ? 'rgba(251,146,60,0.15)' : 'rgba(251,146,60,0.45)'),
+            borderColor: 'rgba(251,146,60,0.5)',
+            borderWidth: 1,
+            borderRadius: 4,
+            stack: 'outflows',
+            order: 5
+          },
+          {
+            label: 'Surplus',
+            data: surplusData,
             type: 'line',
             borderColor: cc.line,
             backgroundColor: 'transparent',
             borderWidth: 2,
-            pointBackgroundColor: cc.line,
+            borderDash: [4, 3],
+            pointBackgroundColor: surplusData.map(v => v >= 0 ? 'rgba(34,197,94,0.9)' : 'rgba(239,68,68,0.9)'),
+            pointBorderColor: surplusData.map(v => v >= 0 ? 'rgba(34,197,94,1)' : 'rgba(239,68,68,1)'),
             pointRadius: 3,
             tension: 0.3,
-            order: 1
+            order: 1,
+            stack: false
           }
         ]
       },
       options: {
         ...CHART_DEFAULTS,
+        interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { grid: { color: cc.grid }, ticks: { color: cc.tick, font: { family: 'Inter', size: 11 } }, border: { color: cc.axis } },
-          y: { grid: { color: cc.grid }, ticks: { color: cc.tick, font: { family: 'Inter', size: 11 }, callback: v => Fmt.compact(v) }, border: { color: cc.axis } }
+          x: {
+            stacked: true,
+            grid: { color: cc.grid },
+            ticks: { color: cc.tick, font: { family: 'Inter', size: 10 } },
+            border: { color: cc.axis }
+          },
+          y: {
+            stacked: true,
+            grid: { color: cc.grid },
+            ticks: { color: cc.tick, font: { family: 'Inter', size: 10 }, callback: v => Fmt.compact(v) },
+            border: { color: cc.axis }
+          }
         },
         plugins: {
           ...CHART_DEFAULTS.plugins,
-          legend: { display: true, position: 'top', align: 'end', labels: { color: cc.tick, font: { size: 11 }, boxWidth: 12, padding: 12 } },
-          tooltip: { ...cc.tooltip, padding: 12, cornerRadius: 10,
-            callbacks: { label: ctx => ` ${ctx.dataset.label}: ${Fmt.currency(ctx.raw)}` }
+          legend: {
+            display: true, position: 'top', align: 'end',
+            labels: { color: cc.tick, font: { size: 10 }, boxWidth: 10, padding: 8 }
+          },
+          tooltip: {
+            ...cc.tooltip, padding: 12, cornerRadius: 10, mode: 'index',
+            callbacks: {
+              label: ctx => ` ${ctx.dataset.label}: ${Fmt.currency(ctx.raw)}`,
+              afterBody: (items) => {
+                const idx = items[0]?.dataIndex;
+                if (idx == null || !annualData[idx]) return '';
+                const m = annualData[idx];
+                return `\n  Net surplus: ${Fmt.currency(surplusData[idx])}`;
+              }
+            }
           }
         }
       }
     });
+  }
+
+  function buildAnnualSummary() {
+    if (!annualData) return '';
+    const now = new Date();
+    const currentMonthIdx = (annualYear === now.getFullYear()) ? now.getMonth() : 11;
+
+    const ytdMonths = annualData.filter(m => m.isPast || m.isCurrent);
+    const ytdIncome = ytdMonths.reduce((s, m) => s + m.actualIncome, 0);
+    const ytdExpenses = ytdMonths.reduce((s, m) => s + m.actualExpenses, 0);
+    const ytdCommitted = ytdMonths.reduce((s, m) => s + m.committed, 0);
+    const ytdSurplus = ytdIncome - ytdExpenses - ytdCommitted;
+
+    // Full year projection
+    const fullIncome = annualData.reduce((s, m) => {
+      if (m.actualIncome > 0) return s + m.actualIncome;
+      return showPredicted ? s + m.predictedIncome : s;
+    }, 0);
+    const fullExpenses = annualData.reduce((s, m) => s + m.actualExpenses, 0);
+    const fullCommitted = annualData.reduce((s, m) => s + m.committed, 0);
+    const fullSurplus = fullIncome - fullExpenses - fullCommitted;
+
+    const remainingMonths = annualData.filter(m => m.isFuture).length;
+    const monthlyAvailable = remainingMonths > 0 ? (fullSurplus / 12) : ytdSurplus / (currentMonthIdx + 1);
+
+    return `
+      <div class="grid-2" style="gap:var(--space-sm);margin-top:var(--space-md)">
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">YTD Income</div>
+          <div style="font-size:16px;font-weight:700;color:var(--green);font-family:var(--font-mono)">${Fmt.compact(ytdIncome)}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em">YTD Outflows</div>
+          <div style="font-size:16px;font-weight:700;color:var(--red);font-family:var(--font-mono)">${Fmt.compact(ytdExpenses + ytdCommitted)}</div>
+        </div>
+      </div>
+      ${showPredicted ? `
+        <div style="margin-top:var(--space-sm);padding:var(--space-sm);background:var(--bg-input);border-radius:var(--radius-md);text-align:center">
+          <div style="font-size:10px;color:var(--text-muted)">Projected Year-End Surplus</div>
+          <div style="font-size:20px;font-weight:700;color:${fullSurplus >= 0 ? 'var(--green)' : 'var(--red)'};font-family:var(--font-mono)">${Fmt.currency(fullSurplus)}</div>
+          ${monthlyAvailable > 0 ? `<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">~${Fmt.compact(monthlyAvailable)}/mo available for debt or savings</div>` : ''}
+        </div>
+      ` : `
+        <div style="margin-top:var(--space-sm);padding:var(--space-sm);background:var(--bg-input);border-radius:var(--radius-md);text-align:center">
+          <div style="font-size:10px;color:var(--text-muted)">YTD Net Surplus</div>
+          <div style="font-size:20px;font-weight:700;color:${ytdSurplus >= 0 ? 'var(--green)' : 'var(--red)'};font-family:var(--font-mono)">${Fmt.currency(ytdSurplus)}</div>
+        </div>
+      `}
+    `;
+  }
+
+  function renderAnnualOverviewSection() {
+    const profile = Store.profile.get();
+    const b = API.calcSalaryBreakdown(profile);
+    const currentPredicted = profile.predictedMonthlyIncome > 0 ? profile.predictedMonthlyIncome : b.totalTakeHome;
+
+    return `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header" style="margin-bottom:var(--space-sm)">
+          <div style="display:flex;align-items:center;gap:var(--space-sm)">
+            <span class="card-title">Annual Overview</span>
+          </div>
+          <div class="month-nav" id="annual-year-nav">
+            <button onclick="Dashboard.setAnnualYear(Dashboard.getAnnualYear() - 1)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <span id="annual-year-label" style="font-size:14px;font-weight:600;min-width:40px;text-align:center">${annualYear}</span>
+            <button onclick="Dashboard.setAnnualYear(Dashboard.getAnnualYear() + 1)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Toggle row -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-sm);gap:var(--space-sm)">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text-secondary)">
+            <input type="checkbox" id="predicted-toggle" ${showPredicted ? 'checked' : ''} onchange="Dashboard.togglePredicted()" class="toggle-switch" />
+            <span>Predicted income</span>
+          </label>
+          <div id="predicted-edit-wrap" style="display:flex;align-items:center;gap:4px;${showPredicted ? '' : 'opacity:0.4;pointer-events:none'}">
+            <span style="font-size:11px;color:var(--text-muted)">R$</span>
+            <input id="predicted-income-input" type="number" inputmode="decimal" class="form-input" value="${Math.round(currentPredicted)}" style="width:90px;padding:3px 6px;font-size:12px;text-align:right" />
+            <button class="btn btn-ghost btn-sm" onclick="Dashboard.savePredictedIncome()" style="padding:2px 8px;font-size:11px">Set</button>
+          </div>
+        </div>
+
+        <!-- Chart -->
+        <div id="annual-chart-inner" class="chart-wrap" style="height:220px">
+          <canvas id="annual-chart-canvas"></canvas>
+        </div>
+
+        <!-- Summary -->
+        <div id="annual-summary">${buildAnnualSummary()}</div>
+      </div>
+    `;
+  }
+
+  // ── Year Projection Table (Expandable) ──────────────────────
+  let expandedSections = {};
+
+  function toggleSection(section) {
+    expandedSections[section] = !expandedSections[section];
+    renderYearProjectionOnly();
+  }
+
+  function renderYearProjectionOnly() {
+    const el = document.getElementById('year-projection-card');
+    if (!el || !annualData) return;
+    el.innerHTML = buildYearProjectionContent();
+  }
+
+  function buildYearProjectionContent() {
+    if (!annualData) return '';
+    const now = new Date();
+    const currentMonthIdx = (annualYear === now.getFullYear()) ? now.getMonth() : -1;
+
+    const monthLabels = annualData.map(m => {
+      const [, mo] = m.month.split('-');
+      return Fmt.monthShort(m.month + '-01');
+    });
+
+    const arrow = (section) => expandedSections[section]
+      ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>'
+      : '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"/></svg>';
+
+    // Totals
+    const totalIncome = annualData.reduce((s, m) => {
+      if (m.actualIncome > 0) return s + m.actualIncome;
+      return showPredicted ? s + m.predictedIncome : s;
+    }, 0);
+    const totalExpenses = annualData.reduce((s, m) => s + m.actualExpenses, 0);
+    const totalCommitted = annualData.reduce((s, m) => s + m.committed, 0);
+    const totalOutflows = totalExpenses + totalCommitted;
+    const totalSurplus = totalIncome - totalOutflows;
+
+    // Build table header
+    let html = `<div class="year-proj-table-wrap"><table class="year-proj-table"><thead><tr>
+      <th class="year-proj-label-col"></th>`;
+    monthLabels.forEach((lbl, i) => {
+      const isCurrent = i === currentMonthIdx;
+      html += `<th class="${isCurrent ? 'year-proj-current' : ''}">${lbl}</th>`;
+    });
+    html += `<th class="year-proj-total-col">Total</th></tr></thead><tbody>`;
+
+    // ── Income row (expandable)
+    html += `<tr class="year-proj-row year-proj-clickable" onclick="Dashboard.toggleSection('income')">
+      <td class="year-proj-label-col">${arrow('income')} Income</td>`;
+    annualData.forEach((m, i) => {
+      const val = m.actualIncome > 0 ? m.actualIncome : (showPredicted ? m.predictedIncome : 0);
+      const cls = m.isFuture ? 'year-proj-future' : '';
+      const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+      html += `<td class="${cls} ${cur}" style="color:var(--green)">${Fmt.compact(val)}</td>`;
+    });
+    html += `<td class="year-proj-total-col" style="color:var(--green)">${Fmt.compact(totalIncome)}</td></tr>`;
+
+    // Income expanded details
+    if (expandedSections.income) {
+      const profile = Store.profile.get();
+      const b = API.calcSalaryBreakdown(profile);
+      // Base salary row
+      html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">Net salary</td>`;
+      annualData.forEach((m, i) => {
+        const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+        html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(b.netSalary)}</td>`;
+      });
+      html += `<td class="year-proj-total-col">${Fmt.compact(b.netSalary * 12)}</td></tr>`;
+
+      // Benefits row
+      if (b.totalBenefits > 0) {
+        html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">Benefits</td>`;
+        annualData.forEach((m, i) => {
+          const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+          html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(b.totalBenefits)}</td>`;
+        });
+        html += `<td class="year-proj-total-col">${Fmt.compact(b.totalBenefits * 12)}</td></tr>`;
+      }
+
+      // 13th salary row
+      const m1 = profile.decimo13Month1 || 11;
+      const m2 = profile.decimo13Month2 || 12;
+      html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">13th salary</td>`;
+      annualData.forEach((m, i) => {
+        const mo = i + 1;
+        const val = (mo === m1 || mo === m2) ? b.decimoTerceiroNet / 2 : 0;
+        const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+        html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${val > 0 ? Fmt.compact(val) : '—'}</td>`;
+      });
+      html += `<td class="year-proj-total-col">${Fmt.compact(b.decimoTerceiroNet)}</td></tr>`;
+    }
+
+    // ── Expenses row
+    html += `<tr class="year-proj-row"><td class="year-proj-label-col">Expenses</td>`;
+    annualData.forEach((m, i) => {
+      const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+      html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}" style="color:var(--red)">${m.actualExpenses > 0 ? Fmt.compact(m.actualExpenses) : '—'}</td>`;
+    });
+    html += `<td class="year-proj-total-col" style="color:var(--red)">${Fmt.compact(totalExpenses)}</td></tr>`;
+
+    // ── Committed row (expandable)
+    html += `<tr class="year-proj-row year-proj-clickable" onclick="Dashboard.toggleSection('committed')">
+      <td class="year-proj-label-col">${arrow('committed')} Committed</td>`;
+    annualData.forEach((m, i) => {
+      const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+      html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}" style="color:var(--orange)">${Fmt.compact(m.committed)}</td>`;
+    });
+    html += `<td class="year-proj-total-col" style="color:var(--orange)">${Fmt.compact(totalCommitted)}</td></tr>`;
+
+    // Committed expanded details
+    if (expandedSections.committed) {
+      // Subscriptions
+      if (annualData[0].subscriptions > 0) {
+        html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">Subscriptions</td>`;
+        annualData.forEach((m, i) => {
+          const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+          html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(m.subscriptions)}</td>`;
+        });
+        html += `<td class="year-proj-total-col">${Fmt.compact(annualData.reduce((s, m) => s + m.subscriptions, 0))}</td></tr>`;
+
+        // Individual subscription items
+        (annualData[0].subscriptionItems || []).forEach(sub => {
+          html += `<tr class="year-proj-subrow year-proj-detail"><td class="year-proj-label-col year-proj-detail-label">${sub.emoji || '📱'} ${App.esc(sub.name)}</td>`;
+          annualData.forEach((m, i) => {
+            const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+            html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(sub.amount)}</td>`;
+          });
+          html += `<td class="year-proj-total-col">${Fmt.compact(sub.amount * 12)}</td></tr>`;
+        });
+      }
+
+      // Installments
+      html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">Installments</td>`;
+      annualData.forEach((m, i) => {
+        const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+        html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${m.installments > 0 ? Fmt.compact(m.installments) : '—'}</td>`;
+      });
+      html += `<td class="year-proj-total-col">${Fmt.compact(annualData.reduce((s, m) => s + m.installments, 0))}</td></tr>`;
+
+      // Loan payments
+      if (annualData[0].loanPayments > 0) {
+        html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">Loan payments</td>`;
+        annualData.forEach((m, i) => {
+          const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+          html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(m.loanPayments)}</td>`;
+        });
+        html += `<td class="year-proj-total-col">${Fmt.compact(annualData.reduce((s, m) => s + m.loanPayments, 0))}</td></tr>`;
+
+        // Individual loan items
+        (annualData[0].loanItems || []).forEach(loan => {
+          html += `<tr class="year-proj-subrow year-proj-detail"><td class="year-proj-label-col year-proj-detail-label">${App.esc(loan.name || 'Loan')}</td>`;
+          annualData.forEach((m, i) => {
+            const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+            html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(loan.monthlyPayment || 0)}</td>`;
+          });
+          html += `<td class="year-proj-total-col">${Fmt.compact((loan.monthlyPayment || 0) * 12)}</td></tr>`;
+        });
+      }
+    }
+
+    // ── Total Outflows row
+    html += `<tr class="year-proj-row year-proj-divider"><td class="year-proj-label-col" style="font-weight:600">Total Outflows</td>`;
+    annualData.forEach((m, i) => {
+      const total = m.actualExpenses + m.committed;
+      const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+      html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}" style="font-weight:600;color:var(--red)">${Fmt.compact(total)}</td>`;
+    });
+    html += `<td class="year-proj-total-col" style="font-weight:600;color:var(--red)">${Fmt.compact(totalOutflows)}</td></tr>`;
+
+    // ── Net Surplus row
+    html += `<tr class="year-proj-row year-proj-surplus"><td class="year-proj-label-col" style="font-weight:700">Net Surplus</td>`;
+    annualData.forEach((m, i) => {
+      const inc = m.actualIncome > 0 ? m.actualIncome : (showPredicted ? m.predictedIncome : 0);
+      const surplus = inc - m.actualExpenses - m.committed;
+      const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+      html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}" style="font-weight:700;color:${surplus >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.compact(surplus)}</td>`;
+    });
+    html += `<td class="year-proj-total-col" style="font-weight:700;color:${totalSurplus >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.compact(totalSurplus)}</td></tr>`;
+
+    html += `</tbody></table></div>`;
+    return html;
+  }
+
+  function renderYearProjectionSection() {
+    return `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header" style="margin-bottom:var(--space-sm)">
+          <span class="card-title">Year Projection</span>
+          <span class="pill pill-blue" style="font-size:10px">${annualYear}</span>
+        </div>
+        <div id="year-projection-card">${buildYearProjectionContent()}</div>
+      </div>
+    `;
   }
 
   function renderSalaryCard() {
@@ -946,5 +1344,5 @@ const Dashboard = (() => {
     `;
   }
 
-  return { render, saveNewSubscription, deleteSubscription };
+  return { render, saveNewSubscription, deleteSubscription, setAnnualYear, getAnnualYear: () => annualYear, togglePredicted, savePredictedIncome, toggleSection };
 })();

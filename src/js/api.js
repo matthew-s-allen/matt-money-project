@@ -812,6 +812,80 @@ Critical extraction rules:
     return items;
   }
 
+  // ── Annual Overview (12-month year view) ─────────────────
+  function getAnnualOverview(year) {
+    const profile = Store.profile.get();
+    const breakdown = calcSalaryBreakdown(profile);
+    const subs = getSubscriptions().filter(s => s.active !== false);
+    const subsTotal = subs.reduce((s, sub) => s + (sub.amount || 0), 0);
+    const loans = Store.data.getLoans();
+    const loansTotal = loans.reduce((s, l) => s + (l.monthlyPayment || 0), 0);
+    const allTx = Store.data.getTransactions();
+
+    const now = new Date();
+    const currentMonth = now.getFullYear() * 12 + now.getMonth(); // absolute month index
+
+    const predictedBase = (profile.predictedMonthlyIncome > 0)
+      ? profile.predictedMonthlyIncome
+      : breakdown.totalTakeHome;
+
+    const months = [];
+    for (let m = 0; m < 12; m++) {
+      const monthKey = `${year}-${String(m + 1).padStart(2, '0')}`;
+      const absMonth = year * 12 + m;
+      const isPast = absMonth < currentMonth;
+      const isCurrent = absMonth === currentMonth;
+      const isFuture = absMonth > currentMonth;
+
+      // Actual transactions
+      const monthTx = allTx.filter(t => t.date?.startsWith(monthKey));
+      let actualIncome = 0, actualExpenses = 0;
+      monthTx.forEach(t => {
+        const amt = parseFloat(t.amount) || 0;
+        if (t.type === 'income') actualIncome += amt;
+        else actualExpenses += amt;
+      });
+
+      // Installments for this month
+      const instTotal = getMonthlyInstallmentTotal(monthKey);
+
+      // Predicted income: base + 13th salary in applicable months + vacation
+      let predictedIncome = predictedBase;
+      const m1 = profile.decimo13Month1 || 11;
+      const m2 = profile.decimo13Month2 || 12;
+      if ((m + 1) === m1) predictedIncome += breakdown.decimoTerceiroNet / 2;
+      if ((m + 1) === m2) predictedIncome += breakdown.decimoTerceiroNet / 2;
+      // Vacation pay in vacation months
+      (profile.vacationPlans || []).forEach(vp => {
+        if (vp.month === (m + 1)) {
+          predictedIncome += breakdown.vacationBonus + breakdown.abonoPecuniario;
+        }
+      });
+
+      const committed = subsTotal + instTotal + loansTotal;
+      const totalOutflows = actualExpenses + committed;
+      const income = actualIncome || 0;
+      const surplus = (income > 0 ? income : predictedIncome) - totalOutflows;
+
+      months.push({
+        month: monthKey,
+        isPast, isCurrent, isFuture,
+        actualIncome, actualExpenses,
+        subscriptions: subsTotal,
+        subscriptionItems: subs,
+        installments: instTotal,
+        installmentItems: getMonthlyInstallmentItems(monthKey),
+        loanPayments: loansTotal,
+        loanItems: loans,
+        committed,
+        totalOutflows,
+        predictedIncome,
+        surplus
+      });
+    }
+    return months;
+  }
+
   async function initBackend() { return { success: true }; }
 
   return {
@@ -832,6 +906,7 @@ Critical extraction rules:
     getInstallments, upsertInstallment, deleteInstallment,
     getFaturas, setFatura, getFaturasForCard, getFuturasFatura,
     getCashFlowMonth, saveCashFlowMonth, addCashFlowExpense, updateCashFlowExpense, deleteCashFlowExpense,
+    getAnnualOverview,
     syncBackup, selectBackupFolder, shareBackup, downloadSnapshot, startFresh,
     flushQueue, initBackend
   };

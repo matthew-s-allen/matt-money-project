@@ -1367,4 +1367,140 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 380px) {
   .setup-step-dot { width: 22px; height: 22px; font-size: 10px; }
   .setup-step-line { width: 20px; }
+  .hero-grid { grid-template-columns: 1fr 1fr !important; gap: var(--space-sm) !important; }
+}
+
+/* ── Toggle switch ─────────────────────────────────────────── */
+.toggle-switch {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 34px;
+  height: 18px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  flex-shrink: 0;
+}
+.toggle-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+.toggle-switch:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.toggle-switch:checked::after {
+  transform: translateX(16px);
+  background: #fff;
+}
+
+/* ── Year Projection Table ─────────────────────────────────── */
+.year-proj-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 calc(-1 * var(--space-md));
+  padding: 0 var(--space-md);
+}
+.year-proj-table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.year-proj-table th,
+.year-proj-table td {
+  padding: 6px 8px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.year-proj-table th {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+.year-proj-label-col {
+  text-align: left !important;
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 2;
+  min-width: 100px;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text);
+}
+th.year-proj-label-col { z-index: 3; }
+.year-proj-total-col {
+  font-weight: 600;
+  border-left: 2px solid var(--border);
+  background: var(--bg-input);
+}
+.year-proj-current {
+  background: var(--primary-glow) !important;
+}
+.year-proj-future {
+  opacity: 0.55;
+  font-style: italic;
+}
+.year-proj-clickable {
+  cursor: pointer;
+}
+.year-proj-clickable:hover td {
+  background: var(--bg-input);
+}
+.year-proj-clickable .year-proj-label-col {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.year-proj-subrow td {
+  font-size: 10px;
+  padding: 3px 8px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+.year-proj-sub-label {
+  padding-left: 18px !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  color: var(--text-secondary) !important;
+}
+.year-proj-detail td {
+  font-size: 9px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+}
+.year-proj-detail-label {
+  padding-left: 28px !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
+  color: var(--text-muted) !important;
+}
+.year-proj-divider td {
+  border-top: 2px solid var(--border);
+}
+.year-proj-surplus td {
+  border-top: 2px solid var(--border);
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: 12px;
 }
