@@ -35,10 +35,11 @@ const Dashboard = (() => {
   function renderSkeleton() {
     return `
       <div class="skeleton" style="height:28px;width:60%;margin-bottom:var(--space-md)"></div>
-      <div class="skeleton" style="height:140px;border-radius:var(--radius-xl);margin-bottom:var(--space-md)"></div>
+      <div class="skeleton" style="height:160px;border-radius:var(--radius-xl);margin-bottom:var(--space-md)"></div>
+      <div class="skeleton" style="height:100px;border-radius:var(--radius-lg);margin-bottom:var(--space-md)"></div>
       <div class="grid-2">
-        <div class="skeleton" style="height:100px;border-radius:var(--radius-lg)"></div>
-        <div class="skeleton" style="height:100px;border-radius:var(--radius-lg)"></div>
+        <div class="skeleton" style="height:90px;border-radius:var(--radius-lg)"></div>
+        <div class="skeleton" style="height:90px;border-radius:var(--radius-lg)"></div>
       </div>
       <div class="skeleton" style="height:200px;border-radius:var(--radius-lg);margin-top:var(--space-md)"></div>
     `;
@@ -49,16 +50,17 @@ const Dashboard = (() => {
     container.innerHTML = renderSkeleton();
 
     try {
-      const [s, h, accounts, cards, categories] = await Promise.all([
+      const [s, h, accounts, cards, categories, patrimonio] = await Promise.all([
         API.getSummary(App.state.activeMonth),
         API.getMonthlyHistory(6),
         API.getAccounts(),
         API.getCreditCards(),
-        API.getCategories()
+        API.getCategories(),
+        API.getPatrimonio()
       ]);
       summary = s;
       history = h;
-      renderFull(container, s, h, accounts, cards, categories);
+      renderFull(container, s, h, accounts, cards, categories, patrimonio);
     } catch (e) {
       container.innerHTML = `
         <div class="empty-state">
@@ -71,29 +73,382 @@ const Dashboard = (() => {
     }
   }
 
-  function renderFull(container, s, h, accounts, cards, categories) {
+  // ── Compute adiantamento and 30th salary from profile ──────
+  function computeIncomeSchedule(profile) {
+    const b = API.calcSalaryBreakdown(profile);
+    const ps = profile.paymentSchedule || [];
+
+    // Find the advance (15th) entry
+    const advanceEntry = ps.find(p => p.label?.toLowerCase().includes('adiant') || p.day <= 15) || ps[0];
+    const salaryEntry  = ps.find(p => p.label?.toLowerCase().includes('salár') || p.day >= 25) || ps[1];
+
+    let adiantamento;
+    if (advanceEntry?.isFixed && advanceEntry?.amount > 0) {
+      adiantamento = advanceEntry.amount;
+    } else if (profile.adiantamentoAmount > 0) {
+      adiantamento = profile.adiantamentoAmount;
+    } else {
+      const pct = advanceEntry?.percent || 40;
+      adiantamento = b.totalTakeHome * pct / 100;
+    }
+
+    let salario30;
+    if (salaryEntry?.isFixed && salaryEntry?.amount > 0) {
+      salario30 = salaryEntry.amount;
+    } else {
+      salario30 = b.totalTakeHome - adiantamento;
+    }
+
+    const advanceDay = advanceEntry?.day || 15;
+    const salaryDay  = salaryEntry?.day  || 30;
+
+    return { adiantamento, salario30, totalTakeHome: b.totalTakeHome, advanceDay, salaryDay, breakdown: b };
+  }
+
+  // ── "Live on the 15th" hero card ───────────────────────────
+  function renderLive15Card(expenses, income, profile, isCurrentMonth, h) {
+    if (!profile.salary || profile.salary === 0) {
+      // No salary configured — show a basic summary + setup nudge
+      const balance  = income - expenses;
+      const savingsRate = income > 0 ? ((income - expenses) / income * 100) : 0;
+      const getStatus = r => r >= 30
+        ? { label: 'Great', class: 'pill-green' }
+        : r >= 15 ? { label: 'OK', class: 'pill-yellow' }
+        : { label: 'Over budget', class: 'pill-red' };
+      const status = getStatus(savingsRate);
+      return `
+        <div class="hero-card" style="margin-bottom:var(--space-md)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-sm)">
+            <div class="hero-label">Monthly Balance</div>
+            <span class="pill ${status.class}">${status.label} · ${Fmt.percent(savingsRate)}</span>
+          </div>
+          <div class="hero-value" style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.currency(balance)}</div>
+          <div class="hero-grid" style="margin-top:var(--space-md)">
+            <div class="stat-block">
+              <div class="stat-label">Income</div>
+              <div class="stat-value positive" style="font-size:18px">${Fmt.compact(income)}</div>
+            </div>
+            <div class="stat-block" style="text-align:center">
+              <div class="stat-label">Expenses</div>
+              <div class="stat-value negative" style="font-size:18px">${Fmt.compact(expenses)}</div>
+            </div>
+            <div class="stat-block" style="text-align:right">
+              <div class="stat-label">Save rate</div>
+              <div class="stat-value" style="font-size:18px;color:var(--text-secondary)">${Fmt.percent(savingsRate)}</div>
+            </div>
+          </div>
+          <div style="margin-top:var(--space-md);padding-top:var(--space-md);border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)">
+            Set your salary in Settings to unlock the "Live on the 15th" tracker.
+          </div>
+        </div>
+      `;
+    }
+
+    const sched = computeIncomeSchedule(profile);
+    const { adiantamento, salario30, totalTakeHome, advanceDay, salaryDay } = sched;
+
+    // Coverage: can the advance alone cover all expenses?
+    const coverage = adiantamento > 0 ? (expenses / adiantamento * 100) : 0;
+    const advanceRemaining = adiantamento - expenses;
+    // What goes to savings on the 30th: full salary if expenses covered by advance; else salary minus shortfall
+    const shortfall = Math.max(0, expenses - adiantamento);
+    const overflowToSavings = salario30 - shortfall;
+
+    // Period context
+    const now = new Date();
+    const dayOfMonth = isCurrentMonth ? now.getDate() : null;
+    const inAdvancePeriod = dayOfMonth !== null && dayOfMonth <= advanceDay;
+    const periodLabel = dayOfMonth !== null
+      ? (inAdvancePeriod ? `Day ${dayOfMonth} · advance period` : `Day ${dayOfMonth} · salary period`)
+      : null;
+
+    // Status
+    let statusLabel, statusClass;
+    if (coverage <= 100) {
+      if (expenses === 0) { statusLabel = 'No expenses yet'; statusClass = 'pill-blue'; }
+      else if (coverage <= 80) { statusLabel = 'Living on the 15th ✓'; statusClass = 'pill-green'; }
+      else { statusLabel = 'On track'; statusClass = 'pill-green'; }
+    } else if (coverage <= 130) {
+      statusLabel = 'Over advance'; statusClass = 'pill-yellow';
+    } else {
+      statusLabel = 'Way over budget'; statusClass = 'pill-red';
+    }
+
+    const barColor = coverage <= 80 ? 'var(--green)' : coverage <= 100 ? 'var(--yellow)' : 'var(--red)';
+    const barPct   = Math.min(100, coverage);
+
+    // MoM delta from history
+    let momHtml = '';
+    if (h && h.length >= 2) {
+      const prev = h[h.length - 2];
+      const prevExp = prev?.expenses || 0;
+      if (prevExp > 0) {
+        const delta = expenses - prevExp;
+        const deltaColor = delta <= 0 ? 'var(--green)' : 'var(--red)';
+        const deltaSign  = delta >= 0 ? '+' : '';
+        momHtml = `<span style="font-size:11px;color:${deltaColor};font-weight:500">${deltaSign}${Fmt.compact(delta)} vs last month</span>`;
+      }
+    }
+
+    return `
+      <div class="hero-card" style="margin-bottom:var(--space-md)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
+          <div>
+            <div class="hero-label">Live on the 15th</div>
+            ${periodLabel ? `<div style="font-size:10px;color:var(--text-muted);margin-top:1px">${periodLabel}</div>` : ''}
+          </div>
+          <span class="pill ${statusClass}">${statusLabel}</span>
+        </div>
+
+        <!-- Coverage bar -->
+        <div style="margin:var(--space-md) 0">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+            <span style="font-size:12px;color:var(--text-secondary)">Advance coverage ${momHtml}</span>
+            <span style="font-size:22px;font-weight:700;font-family:var(--font-mono);color:${barColor}">${Fmt.percent(Math.min(coverage, 999))}</span>
+          </div>
+          <div class="seg-bar">
+            <div style="width:${barPct}%;background:${barColor};transition:width 0.5s ease"></div>
+            <div style="flex:1;background:var(--bg-input)"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:10px;color:var(--text-muted)">
+            <span>R$ 0</span>
+            <span>Advance: ${Fmt.compact(adiantamento)}</span>
+          </div>
+        </div>
+
+        <!-- 3-col stats -->
+        <div class="hero-grid">
+          <div class="stat-block">
+            <div class="stat-label">Advance (${advanceDay}th)</div>
+            <div class="stat-value positive" style="font-size:16px">${Fmt.compact(adiantamento)}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${Math.round((advanceDay > 0 ? advanceDay : 15) / totalTakeHome * (adiantamento))}% planned</div>
+          </div>
+          <div class="stat-block" style="text-align:center">
+            <div class="stat-label">Month expenses</div>
+            <div class="stat-value negative" style="font-size:16px">${Fmt.compact(expenses)}</div>
+            <div style="font-size:10px;margin-top:2px;color:${advanceRemaining >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:500">
+              ${advanceRemaining >= 0 ? Fmt.compact(advanceRemaining) + ' left' : Fmt.compact(-advanceRemaining) + ' over'}
+            </div>
+          </div>
+          <div class="stat-block" style="text-align:right">
+            <div class="stat-label">→ Savings (${salaryDay}th)</div>
+            <div class="stat-value" style="font-size:16px;color:${overflowToSavings >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.compact(Math.abs(overflowToSavings))}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${overflowToSavings >= 0 ? 'overflow' : 'deficit'}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Cash flow checkpoints card ─────────────────────────────
+  function renderCashFlowCard(expenses, income, profile, accounts, cards, isCurrentMonth) {
+    if (!profile.salary || profile.salary === 0) return '';
+
+    const sched = computeIncomeSchedule(profile);
+    const { adiantamento, salario30, advanceDay, salaryDay } = sched;
+
+    const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+    const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+
+    // Simplified cash flow model:
+    // - Start: current bank balance (this month's opening estimate)
+    // - 15th: +advance
+    // - 30th: +salary, -card bill (current card balance as proxy for month bill)
+    const now = new Date();
+    const dayOfMonth = isCurrentMonth ? now.getDate() : 30;
+
+    // "After 15th" — advance received, expenses tracked so far assumed pre-15th portion
+    // We use a simple heuristic: if today > 15th, advance already received; expenses are actual
+    const advanceReceived = !isCurrentMonth || dayOfMonth >= advanceDay;
+    const salaryReceived  = !isCurrentMonth || dayOfMonth >= salaryDay;
+
+    // Balance after advance checkpoint
+    const balanceAfter15 = totalBankBalance
+      + (advanceReceived ? 0 : adiantamento)   // if not received yet, show projected
+      - (advanceReceived ? 0 : expenses);       // if received, expenses already hit balance
+
+    // Overflow: end of month projection
+    const projectedOverflow = adiantamento + salario30 - expenses - totalCardBalance;
+    const overflowColor = projectedOverflow >= 0 ? 'var(--green)' : 'var(--red)';
+
+    // Step indicator
+    const step = dayOfMonth < advanceDay ? 0 : dayOfMonth < salaryDay ? 1 : 2;
+
+    const stepDot = (active, done) => {
+      const bg = done ? 'var(--green)' : active ? 'var(--primary)' : 'var(--bg-input)';
+      const border = done || active ? 'none' : '1px solid var(--border)';
+      return `<div style="width:8px;height:8px;border-radius:50%;background:${bg};border:${border};flex-shrink:0"></div>`;
+    };
+
+    return `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header" style="margin-bottom:var(--space-md)">
+          <span class="card-title">Cash Flow</span>
+          <span style="font-size:11px;color:var(--text-muted)">${isCurrentMonth ? 'This month' : 'Month view'}</span>
+        </div>
+
+        <!-- Timeline rows -->
+        <div style="display:flex;flex-direction:column;gap:0">
+
+          <!-- Start of month -->
+          <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-xs) 0">
+            ${stepDot(step === 0, step > 0)}
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:12px;color:var(--text-secondary)">Bank balance</span>
+              <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:${totalBankBalance >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.compact(totalBankBalance)}</span>
+            </div>
+          </div>
+
+          <!-- Connector -->
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">+ Advance (${advanceDay}th)</span>
+              <span style="font-size:11px;color:var(--green);font-family:var(--font-mono)">+${Fmt.compact(adiantamento)}</span>
+            </div>
+          </div>
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">− Month expenses</span>
+              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(expenses)}</span>
+            </div>
+          </div>
+
+          <!-- After 15th -->
+          <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-xs) 0">
+            ${stepDot(step === 1, step > 1)}
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:12px;color:var(--text-secondary)">After 15th</span>
+              <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:${balanceAfter15 >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.compact(balanceAfter15)}</span>
+            </div>
+          </div>
+
+          <!-- Connector -->
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">+ Salary (${salaryDay}th)</span>
+              <span style="font-size:11px;color:var(--green);font-family:var(--font-mono)">+${Fmt.compact(salario30)}</span>
+            </div>
+          </div>
+          ${totalCardBalance > 0 ? `
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">− Card bill (est.)</span>
+              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(totalCardBalance)}</span>
+            </div>
+          </div>
+          ` : ''}
+
+          <!-- End / Overflow -->
+          <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-xs) 0;border-top:1px solid var(--border);margin-top:var(--space-xs)">
+            ${stepDot(step === 2, false)}
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:12px;font-weight:600">Overflow → savings</span>
+              <span style="font-size:15px;font-weight:700;font-family:var(--font-mono);color:${overflowColor}">${Fmt.compact(projectedOverflow)}</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Net worth teaser ───────────────────────────────────────
+  function renderNetWorthTeaser(patrimonio, accounts, cards) {
+    const pat = patrimonio || {};
+    const fgts        = pat.fgts        || 0;
+    const savings     = pat.savings     || 0;
+    const investments = pat.investments || 0;
+    const carValue    = pat.carValue    || 0;
+
+    const bankTotal = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+    const cardTotal = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+
+    const loans = Store.data.getLoans ? Store.data.getLoans() : [];
+    const loanTotal = loans.reduce((s, l) => s + (l.remainingBalance || l.amount || 0), 0);
+
+    const totalAssets = fgts + savings + investments + carValue + Math.max(0, bankTotal);
+    const totalLiabilities = cardTotal + loanTotal;
+    const netWorth = totalAssets - totalLiabilities;
+
+    if (totalAssets === 0 && totalLiabilities === 0) return '';
+
+    const nwColor = netWorth >= 0 ? 'var(--green)' : 'var(--red)';
+
+    return `
+      <div class="card" style="margin-bottom:var(--space-md);cursor:pointer" onclick="App.navigate('patrimonio')">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div class="card-title">Net Worth</div>
+            <div style="font-size:22px;font-weight:700;margin-top:4px;font-family:var(--font-mono);color:${nwColor}">${Fmt.currency(netWorth)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;color:var(--text-muted)">Assets</div>
+            <div style="font-size:13px;font-weight:600;color:var(--text-secondary)">${Fmt.compact(totalAssets)}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Liabilities</div>
+            <div style="font-size:13px;font-weight:600;color:var(--red)">${Fmt.compact(totalLiabilities)}</div>
+          </div>
+        </div>
+        <div style="margin-top:var(--space-sm)">
+          <div class="progress-bar-wrap" style="height:4px">
+            ${totalAssets > 0 ? `<div class="progress-bar-fill" style="width:${Math.min(100, (1 - totalLiabilities/totalAssets)*100)}%;background:var(--green)"></div>` : ''}
+          </div>
+          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;display:flex;justify-content:space-between">
+            <span>${totalAssets > 0 ? Fmt.percent(Math.max(0,(1 - totalLiabilities/totalAssets)*100)) + ' equity' : ''}</span>
+            <span style="color:var(--primary)">See patrimônio →</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Account + card balances row (with credit utilization) ──
+  function renderAccountsRow(accounts, cards) {
+    if (accounts.length === 0 && cards.length === 0) return '';
+
+    const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
+    const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+    const totalCardLimit   = cards.reduce((s, c) => s + (c.limit || 0), 0);
+    const creditUtil = totalCardLimit > 0 ? (totalCardBalance / totalCardLimit * 100) : 0;
+    const utilColor = creditUtil > 80 ? 'var(--red)' : creditUtil > 50 ? 'var(--yellow)' : 'var(--green)';
+
+    return `
+      <div class="grid-2" style="margin-bottom:var(--space-md)">
+        <div class="card" style="cursor:pointer" onclick="App.navigate('accounts')">
+          <div class="card-title">Bank Balance</div>
+          <div class="stat-value positive" style="font-size:20px;margin-top:var(--space-sm)">${Fmt.compact(totalBankBalance)}</div>
+          <div class="t-muted" style="margin-top:4px">${accounts.length} account${accounts.length !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="App.navigate('accounts')">
+          <div class="card-title">Card Debt</div>
+          <div class="stat-value negative" style="font-size:20px;margin-top:var(--space-sm)">${Fmt.compact(totalCardBalance)}</div>
+          ${totalCardLimit > 0 ? `
+            <div class="progress-bar-wrap" style="height:3px;margin-top:6px">
+              <div class="progress-bar-fill" style="width:${Math.min(100, creditUtil)}%;background:${utilColor}"></div>
+            </div>
+            <div style="font-size:10px;color:${utilColor};margin-top:3px;font-weight:500">${Fmt.percent(creditUtil)} utilization</div>
+          ` : `<div class="t-muted" style="margin-top:4px">${cards.length} card${cards.length !== 1 ? 's' : ''}</div>`}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderFull(container, s, h, accounts, cards, categories, patrimonio) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
     const income   = s.totalIncome   || 0;
     const expenses = s.totalExpenses || 0;
-    const balance  = income - expenses;
-    const savingsRate = income > 0 ? ((income - expenses) / income * 100) : 0;
-    const cats = s.byCategory || {};
-
-    const getStatus = (rate) => {
-      if (rate >= 30) return { label: 'Great', color: 'var(--green)', class: 'pill-green' };
-      if (rate >= 15) return { label: 'OK', color: 'var(--yellow)', class: 'pill-yellow' };
-      return { label: 'Over budget', color: 'var(--red)', class: 'pill-red' };
-    };
-    const status = getStatus(savingsRate);
+    const cats     = s.byCategory    || {};
 
     const now = new Date();
     const [y, m] = App.state.activeMonth.split('-').map(Number);
     const isCurrentMonth = y === now.getFullYear() && m === now.getMonth() + 1;
 
-    const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
-    const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+    const profile = Store.profile.get();
 
     container.innerHTML = `
       <!-- Month Nav -->
@@ -115,57 +470,33 @@ const Dashboard = (() => {
         </div>
       </div>
 
-      <!-- Hero: Balance -->
-      <div class="hero-card" style="margin-bottom:var(--space-md)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-sm)">
-          <div class="hero-label">Monthly Balance</div>
-          <span class="pill ${status.class}">${status.label} · ${Fmt.percent(savingsRate)}</span>
-        </div>
-        <div class="hero-value" style="color:${balance >= 0 ? 'var(--green)' : 'var(--red)'}">${Fmt.currency(balance)}</div>
+      <!-- 1. Live on the 15th hero -->
+      ${renderLive15Card(expenses, income, profile, isCurrentMonth, h)}
 
-        <div style="margin-bottom:var(--space-sm)">
-          <div class="seg-bar">
-            <div class="seg-bar-piece" style="background:var(--green);width:${income > 0 ? Math.min(100, expenses/income*100) : 100}%"></div>
-            <div style="flex:1;background:var(--bg-input)"></div>
-          </div>
-        </div>
+      <!-- 2. Cash flow checkpoints -->
+      ${renderCashFlowCard(expenses, income, profile, accounts, cards, isCurrentMonth)}
 
-        <div class="hero-grid">
-          <div class="stat-block">
-            <div class="stat-label">Income</div>
-            <div class="stat-value positive" style="font-size:18px">${Fmt.compact(income)}</div>
-          </div>
-          <div class="stat-block" style="text-align:center">
-            <div class="stat-label">Expenses</div>
-            <div class="stat-value negative" style="font-size:18px">${Fmt.compact(expenses)}</div>
-          </div>
-          <div class="stat-block" style="text-align:right">
-            <div class="stat-label">Save rate</div>
-            <div class="stat-value" style="font-size:18px;color:${status.color}">${Fmt.percent(savingsRate)}</div>
-          </div>
-        </div>
-      </div>
+      <!-- 3. Account balances -->
+      ${renderAccountsRow(accounts, cards)}
 
-      <!-- Salary Breakdown -->
-      ${renderSalaryCard()}
+      <!-- 4. Net worth teaser -->
+      ${renderNetWorthTeaser(patrimonio, accounts, cards)}
 
-      <!-- Account balances -->
-      ${(accounts.length > 0 || cards.length > 0) ? `
-      <div class="grid-2" style="margin-bottom:var(--space-md)">
-        <div class="card" style="cursor:pointer" onclick="App.navigate('accounts')">
-          <div class="card-title">Bank Balance</div>
-          <div class="stat-value positive" style="font-size:20px;margin-top:var(--space-sm)">${Fmt.compact(totalBankBalance)}</div>
-          <div class="t-muted" style="margin-top:4px">${accounts.length} account${accounts.length !== 1 ? 's' : ''}</div>
+      <!-- 5. Budget progress -->
+      ${renderBudgetSection(cats, categories)}
+
+      <!-- 6. Category breakdown -->
+      ${Object.keys(cats).length > 0 ? `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header">
+          <span class="card-title">Category Breakdown</span>
+          <button class="btn btn-ghost btn-sm" onclick="App.navigate('transactions')">See all</button>
         </div>
-        <div class="card" style="cursor:pointer" onclick="App.navigate('accounts')">
-          <div class="card-title">Card Balance</div>
-          <div class="stat-value negative" style="font-size:20px;margin-top:var(--space-sm)">${Fmt.compact(totalCardBalance)}</div>
-          <div class="t-muted" style="margin-top:4px">${cards.length} card${cards.length !== 1 ? 's' : ''}</div>
-        </div>
+        <div class="telemetry-list" id="cat-telemetry"></div>
       </div>
       ` : ''}
 
-      <!-- Quick stats -->
+      <!-- 7. Quick stats -->
       <div class="grid-2" style="margin-bottom:var(--space-md)">
         <div class="card" style="cursor:pointer" onclick="App.navigate('transactions')">
           <div class="card-title">Transactions</div>
@@ -179,21 +510,7 @@ const Dashboard = (() => {
         </div>
       </div>
 
-      <!-- Spending by category -->
-      ${Object.keys(cats).length > 0 ? `
-      <div class="card" style="margin-bottom:var(--space-md)">
-        <div class="card-header">
-          <span class="card-title">Category Breakdown</span>
-          <button class="btn btn-ghost btn-sm" onclick="App.navigate('transactions')">See all</button>
-        </div>
-        <div class="telemetry-list" id="cat-telemetry"></div>
-      </div>
-      ` : ''}
-
-      <!-- Budget Progress -->
-      ${renderBudgetSection(cats, categories)}
-
-      <!-- 6-month trend -->
+      <!-- 8. 6-month trend -->
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
           <span class="card-title">6-Month Trend</span>
@@ -203,7 +520,7 @@ const Dashboard = (() => {
         </div>
       </div>
 
-      <!-- Category donut -->
+      <!-- 9. Spend distribution donut -->
       ${Object.keys(cats).length > 0 ? `
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
@@ -218,7 +535,10 @@ const Dashboard = (() => {
       </div>
       ` : ''}
 
-      <!-- Recent transactions -->
+      <!-- 10. Salary breakdown (secondary) -->
+      ${renderSalaryCard()}
+
+      <!-- 11. Recent activity -->
       <div class="card">
         <div class="card-header">
           <span class="card-title">Recent Activity</span>
@@ -244,7 +564,6 @@ const Dashboard = (() => {
 
   function renderBudgetSection(cats, categories) {
     if (!categories || !categories.length) return '';
-    // Build budget items: only categories with a budget > 0 and either spending or budget defined
     const budgetItems = categories
       .filter(c => c.budget > 0 && c.active !== false)
       .map(c => {
@@ -252,13 +571,13 @@ const Dashboard = (() => {
         const pct = c.budget > 0 ? (spent / c.budget * 100) : 0;
         return { ...c, spent, pct };
       })
-      .sort((a, b) => b.pct - a.pct); // worst budget adherence first
+      .sort((a, b) => b.pct - a.pct);
 
     if (!budgetItems.length) return '';
 
     const totalBudget = budgetItems.reduce((s, b) => s + b.budget, 0);
-    const totalSpent = budgetItems.reduce((s, b) => s + b.spent, 0);
-    const overallPct = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
+    const totalSpent  = budgetItems.reduce((s, b) => s + b.spent, 0);
+    const overallPct  = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
     const overBudgetCount = budgetItems.filter(b => b.pct > 100).length;
 
     return `
