@@ -13,11 +13,12 @@ const Accounts = (() => {
       API.getCreditCards(),
       API.getTransactions({ month: App.state.activeMonth })
     ]);
+    const loans = API.getLoans();
     const activeTab = container.dataset.activeTab || 'accounts';
-    renderFull(container, accounts, cards, allTx, activeTab);
+    renderFull(container, accounts, cards, allTx, activeTab, loans);
   }
 
-  function renderFull(container, accounts, cards, allTx, activeTab) {
+  function renderFull(container, accounts, cards, allTx, activeTab, loans) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
     const now = new Date();
@@ -27,6 +28,8 @@ const Accounts = (() => {
     const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
     const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
     const totalCardLimit   = cards.reduce((s, c) => s + (c.limit || 0), 0);
+    const totalLoanBalance = (loans || []).reduce((s, l) => s + (l.remainingBalance || l.amount || 0), 0);
+    const totalLoanPayment = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
 
     container.innerHTML = `
       <!-- Header -->
@@ -99,6 +102,33 @@ const Accounts = (() => {
           ` : `
             <div class="asset-list">
               ${cards.map(c => renderCardItem(c, allTx)).join('')}
+            </div>
+          `}
+        </div>
+
+        <!-- Personal Loans / Debt -->
+        <div class="card" style="margin-bottom:var(--space-md)">
+          <div class="card-header">
+            <span class="card-title">Loans & Debt</span>
+            <button class="btn btn-ghost btn-sm" onclick="Accounts.addLoan()">+ Add</button>
+          </div>
+          ${!loans || loans.length === 0 ? `
+            <div class="empty-state" style="padding:var(--space-lg) 0">
+              <p>No loans or personal debt tracked.</p>
+            </div>
+          ` : `
+            <div class="asset-list">
+              ${loans.map(l => renderLoanItem(l)).join('')}
+            </div>
+            <div style="display:flex;justify-content:space-between;padding-top:var(--space-sm);border-top:1px solid var(--border);margin-top:var(--space-sm)">
+              <div>
+                <div style="font-size:11px;color:var(--text-muted)">Total owed</div>
+                <div style="font-size:16px;font-weight:700;color:var(--red);font-family:var(--font-mono)">${Fmt.currency(totalLoanBalance)}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:11px;color:var(--text-muted)">Monthly payments</div>
+                <div style="font-size:16px;font-weight:700;color:var(--red);font-family:var(--font-mono)">${Fmt.currency(totalLoanPayment)}</div>
+              </div>
             </div>
           `}
         </div>
@@ -854,11 +884,127 @@ const Accounts = (() => {
     });
   }
 
+  // ── Loan item ────────────────────────────────────────────
+
+  function renderLoanItem(l) {
+    const paidPct = l.amount > 0 ? ((l.amount - (l.remainingBalance || l.amount)) / l.amount * 100) : 0;
+    return `
+      <div class="asset-item" style="cursor:pointer" onclick="Accounts.editLoan('${l.id}')">
+        <div class="asset-icon red">🏦</div>
+        <div class="asset-info" style="flex:1;min-width:0">
+          <div class="asset-name">${App.esc(l.name || 'Loan')}</div>
+          <div class="asset-sub">
+            ${l.monthlyPayment ? Fmt.currency(l.monthlyPayment) + '/mo' : ''}
+            ${l.interestRate ? ' · ' + l.interestRate + '% rate' : ''}
+          </div>
+          ${l.amount > 0 ? `
+            <div style="margin-top:6px">
+              <div class="progress-bar-wrap" style="height:4px">
+                <div class="progress-bar-fill" style="width:${Math.min(100, paidPct)}%;background:var(--green)"></div>
+              </div>
+              <div style="display:flex;justify-content:space-between;margin-top:3px">
+                <span style="font-size:10px;color:var(--text-muted)">${Fmt.percent(paidPct)} paid off</span>
+                <span style="font-size:10px;color:var(--text-muted)">Original: ${Fmt.compact(l.amount)}</span>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:var(--space-sm)">
+          <div class="asset-value negative">${Fmt.currency(l.remainingBalance || l.amount || 0)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Loan modal ──────────────────────────────────────────
+
+  function addLoan() {
+    openLoanModal({ name: '', amount: 0, remainingBalance: 0, monthlyPayment: 0, interestRate: 0 });
+  }
+
+  function editLoan(id) {
+    const loans = API.getLoans();
+    const l = loans.find(x => x.id === id);
+    if (l) openLoanModal(l);
+  }
+
+  function openLoanModal(l) {
+    const isNew = !l.id;
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <h2 class="modal-title">${isNew ? 'Add Loan' : 'Edit Loan'}</h2>
+
+        <div class="form-group">
+          <label class="form-label">Loan name</label>
+          <input type="text" id="loan-name" class="form-input" value="${App.esc(l.name || '')}" placeholder="e.g. Car loan, Personal loan" />
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Original amount</label>
+            <input type="number" id="loan-amount" class="form-input" inputmode="decimal" value="${l.amount || ''}" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Remaining balance</label>
+            <input type="number" id="loan-remaining" class="form-input" inputmode="decimal" value="${l.remainingBalance || ''}" placeholder="0" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">Monthly payment</label>
+            <input type="number" id="loan-payment" class="form-input" inputmode="decimal" value="${l.monthlyPayment || ''}" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Interest rate (%)</label>
+            <input type="number" id="loan-rate" class="form-input" inputmode="decimal" value="${l.interestRate || ''}" placeholder="0" step="0.1" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:var(--space-sm);margin-top:var(--space-lg)">
+          ${!isNew ? `<button class="btn btn-secondary" style="color:var(--red)" onclick="Accounts.deleteLoanConfirm('${l.id}')">Delete</button>` : ''}
+          <button class="btn btn-secondary" style="flex:1" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+          <button class="btn btn-primary" style="flex:1" onclick="Accounts.saveLoan('${l.id || ''}')">Save</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  }
+
+  async function saveLoan(existingId) {
+    const name = document.getElementById('loan-name')?.value.trim();
+    const amount = parseFloat(document.getElementById('loan-amount')?.value) || 0;
+    const remainingBalance = parseFloat(document.getElementById('loan-remaining')?.value) || 0;
+    const monthlyPayment = parseFloat(document.getElementById('loan-payment')?.value) || 0;
+    const interestRate = parseFloat(document.getElementById('loan-rate')?.value) || 0;
+
+    if (!name) { App.toast('Enter a loan name', 'error'); return; }
+
+    const loan = { name, amount, remainingBalance, monthlyPayment, interestRate };
+    if (existingId) loan.id = existingId;
+
+    await API.upsertLoan(loan);
+    document.querySelector('.modal-overlay')?.remove();
+    App.toast(existingId ? 'Loan updated' : 'Loan added', 'success');
+    await render();
+  }
+
+  async function deleteLoanConfirm(id) {
+    if (!confirm('Delete this loan?')) return;
+    await API.deleteLoan(id);
+    document.querySelector('.modal-overlay')?.remove();
+    App.toast('Loan deleted', 'success');
+    await render();
+  }
+
   return {
     render, switchTab,
     addAccount, editAccount, editAccountById, saveAccount, deleteAccount,
     addCard, editCard, editCardById, saveCard, deleteCard,
     addInstallment, editInstallment, saveInstallment, deleteInstallment,
-    saveFatura
+    saveFatura,
+    addLoan, editLoan, saveLoan, deleteLoanConfirm
   };
 })();

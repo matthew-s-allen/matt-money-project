@@ -8,22 +8,22 @@
 
 // Bump this version when backend-incompatible changes are pushed.
 // Frontend-only changes are detected automatically via cache diff.
-const CACHE_NAME = 'matt-money-v6';
+const CACHE_NAME = 'matt-money-v7';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/css/style.css',
-  '/js/utils/formatter.js',
-  '/js/utils/storage.js',
-  '/js/api.js',
-  '/js/views/dashboard.js',
-  '/js/views/add-transaction.js',
-  '/js/views/transactions.js',
-  '/js/views/accounts.js',
-  '/js/views/simulator.js',
-  '/js/views/patrimonio.js',
-  '/js/app.js',
+  './',
+  './index.html',
+  './manifest.json',
+  './css/style.css',
+  './js/utils/formatter.js',
+  './js/utils/storage.js',
+  './js/api.js',
+  './js/views/dashboard.js',
+  './js/views/add-transaction.js',
+  './js/views/transactions.js',
+  './js/views/accounts.js',
+  './js/views/simulator.js',
+  './js/views/patrimonio.js',
+  './js/app.js',
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js',
   'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap'
 ];
@@ -68,7 +68,7 @@ self.addEventListener('fetch', (event) => {
         }).catch(() => {
           // Offline fallback for navigation
           if (request.destination === 'document') {
-            return caches.match('/index.html');
+            return caches.match('./index.html');
           }
         });
       })

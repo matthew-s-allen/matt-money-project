@@ -48,6 +48,8 @@ const App = (() => {
 
   function toggleTheme() {
     setTheme(state.theme === 'dark' ? 'claude' : 'dark');
+    // Re-render active view so charts pick up new theme colors
+    renderView(state.activeView);
   }
 
   // ── Navigation ─────────────────────────────────────────────

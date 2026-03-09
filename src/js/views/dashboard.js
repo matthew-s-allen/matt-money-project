@@ -63,7 +63,8 @@ const Dashboard = (() => {
       // Subscriptions and installments are synchronous — no need to parallel fetch
       const subscriptions = API.getSubscriptions().filter(s => s.active !== false);
       const installmentItems = API.getMonthlyInstallmentItems(App.state.activeMonth);
-      renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems);
+      const loans = API.getLoans();
+      renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems, loans);
     } catch (e) {
       container.innerHTML = `
         <div class="empty-state">
@@ -109,11 +110,17 @@ const Dashboard = (() => {
   }
 
   // ── "Live on the 15th" hero card ───────────────────────────
-  function renderLive15Card(expenses, income, profile, isCurrentMonth, h) {
+  function renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans) {
+    const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
+    const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
+    const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
+    const totalCommitted = subsTotal + instTotal + loanTotal;
+    const totalOutflows = expenses + totalCommitted;
+
     if (!profile.salary || profile.salary === 0) {
       // No salary configured — show a basic summary + setup nudge
-      const balance  = income - expenses;
-      const savingsRate = income > 0 ? ((income - expenses) / income * 100) : 0;
+      const balance  = income - totalOutflows;
+      const savingsRate = income > 0 ? ((income - totalOutflows) / income * 100) : 0;
       const getStatus = r => r >= 30
         ? { label: 'Great', class: 'pill-green' }
         : r >= 15 ? { label: 'OK', class: 'pill-yellow' }
@@ -132,14 +139,22 @@ const Dashboard = (() => {
               <div class="stat-value positive" style="font-size:18px">${Fmt.compact(income)}</div>
             </div>
             <div class="stat-block" style="text-align:center">
-              <div class="stat-label">Expenses</div>
-              <div class="stat-value negative" style="font-size:18px">${Fmt.compact(expenses)}</div>
+              <div class="stat-label">All outflows</div>
+              <div class="stat-value negative" style="font-size:18px">${Fmt.compact(totalOutflows)}</div>
             </div>
             <div class="stat-block" style="text-align:right">
               <div class="stat-label">Save rate</div>
               <div class="stat-value" style="font-size:18px;color:var(--text-secondary)">${Fmt.percent(savingsRate)}</div>
             </div>
           </div>
+          ${totalCommitted > 0 ? `
+          <div style="margin-top:var(--space-sm);font-size:11px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">
+            <span>Tracked: ${Fmt.compact(expenses)}</span>
+            ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
+            ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
+            ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
+          </div>
+          ` : ''}
           <div style="margin-top:var(--space-md);padding-top:var(--space-md);border-top:1px solid var(--border);font-size:12px;color:var(--text-muted)">
             Set your salary in Settings to unlock the "Live on the 15th" tracker.
           </div>
@@ -150,11 +165,11 @@ const Dashboard = (() => {
     const sched = computeIncomeSchedule(profile);
     const { adiantamento, salario30, totalTakeHome, advanceDay, salaryDay } = sched;
 
-    // Coverage: can the advance alone cover all expenses?
-    const coverage = adiantamento > 0 ? (expenses / adiantamento * 100) : 0;
-    const advanceRemaining = adiantamento - expenses;
-    // What goes to savings on the 30th: full salary if expenses covered by advance; else salary minus shortfall
-    const shortfall = Math.max(0, expenses - adiantamento);
+    // Coverage: can the advance alone cover all expenses (tracked + committed)?
+    const coverage = adiantamento > 0 ? (totalOutflows / adiantamento * 100) : 0;
+    const advanceRemaining = adiantamento - totalOutflows;
+    // What goes to savings on the 30th: full salary if outflows covered by advance; else salary minus shortfall
+    const shortfall = Math.max(0, totalOutflows - adiantamento);
     const overflowToSavings = salario30 - shortfall;
 
     // Period context
@@ -227,8 +242,8 @@ const Dashboard = (() => {
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${Math.round((advanceDay > 0 ? advanceDay : 15) / totalTakeHome * (adiantamento))}% planned</div>
           </div>
           <div class="stat-block" style="text-align:center">
-            <div class="stat-label">Month expenses</div>
-            <div class="stat-value negative" style="font-size:16px">${Fmt.compact(expenses)}</div>
+            <div class="stat-label">All outflows</div>
+            <div class="stat-value negative" style="font-size:16px">${Fmt.compact(totalOutflows)}</div>
             <div style="font-size:10px;margin-top:2px;color:${advanceRemaining >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:500">
               ${advanceRemaining >= 0 ? Fmt.compact(advanceRemaining) + ' left' : Fmt.compact(-advanceRemaining) + ' over'}
             </div>
@@ -239,12 +254,20 @@ const Dashboard = (() => {
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${overflowToSavings >= 0 ? 'overflow' : 'deficit'}</div>
           </div>
         </div>
+        ${totalCommitted > 0 ? `
+        <div style="margin-top:var(--space-sm);padding-top:var(--space-sm);border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">
+          <span>Tracked: ${Fmt.compact(expenses)}</span>
+          ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
+          ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
+          ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
+        </div>
+        ` : ''}
       </div>
     `;
   }
 
   // ── Cash flow checkpoints card ─────────────────────────────
-  function renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth) {
+  function renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans) {
     if (!profile.salary || profile.salary === 0) return '';
 
     const sched = computeIncomeSchedule(profile);
@@ -254,6 +277,7 @@ const Dashboard = (() => {
     const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
+    const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
 
     const now = new Date();
     const dayOfMonth = isCurrentMonth ? now.getDate() : 30;
@@ -265,8 +289,8 @@ const Dashboard = (() => {
       + (advanceReceived ? 0 : adiantamento)
       - (advanceReceived ? 0 : expenses);
 
-    // Overflow: end of month projection — income minus all outflows including subscriptions/installments
-    const projectedOverflow = adiantamento + salario30 - expenses - subsTotal - instTotal - totalCardBalance;
+    // Overflow: end of month projection — income minus all outflows including subscriptions/installments/loans
+    const projectedOverflow = adiantamento + salario30 - expenses - subsTotal - instTotal - totalCardBalance - loanTotal;
     const overflowColor = projectedOverflow >= 0 ? 'var(--green)' : 'var(--red)';
 
     // Step indicator
@@ -354,6 +378,15 @@ const Dashboard = (() => {
             <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
               <span style="font-size:11px;color:var(--text-muted)">− Card bill (est.)</span>
               <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(totalCardBalance)}</span>
+            </div>
+          </div>
+          ` : ''}
+          ${loanTotal > 0 ? `
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">− Loan payments</span>
+              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(loanTotal)}</span>
             </div>
           </div>
           ` : ''}
@@ -452,7 +485,7 @@ const Dashboard = (() => {
     `;
   }
 
-  function renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems) {
+  function renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems, loans) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
@@ -490,10 +523,10 @@ const Dashboard = (() => {
       </div>
 
       <!-- 1. Live on the 15th hero -->
-      ${renderLive15Card(expenses, income, profile, isCurrentMonth, h)}
+      ${renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans)}
 
       <!-- 2. Cash flow checkpoints -->
-      ${renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth)}
+      ${renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans)}
 
       <!-- 3. Account balances -->
       ${renderAccountsRow(accounts, cards)}
@@ -501,8 +534,8 @@ const Dashboard = (() => {
       <!-- 4. Net worth teaser -->
       ${renderNetWorthTeaser(patrimonio, accounts, cards)}
 
-      <!-- 5. Monthly commitments (subscriptions + installments) -->
-      ${renderMonthlyCommitmentsCard(subscriptions, installmentItems)}
+      <!-- 5. Monthly commitments (subscriptions + installments + loans) -->
+      ${renderMonthlyCommitmentsCard(subscriptions, installmentItems, loans)}
 
       <!-- 6. Budget progress -->
       ${renderBudgetSection(cats, categories, subscriptions, installmentItems)}
@@ -584,14 +617,16 @@ const Dashboard = (() => {
   // ── Monthly Commitments card ───────────────────────────────
   // Shows fixed monthly subscriptions + installment items for this month.
   // These are "committed" costs before any tracked transaction.
-  function renderMonthlyCommitmentsCard(subscriptions, installmentItems) {
+  function renderMonthlyCommitmentsCard(subscriptions, installmentItems, loans) {
     const hasSubs   = subscriptions && subscriptions.length > 0;
     const hasInsts  = installmentItems && installmentItems.length > 0;
-    if (!hasSubs && !hasInsts) return '';
+    const hasLoans  = loans && loans.length > 0;
+    if (!hasSubs && !hasInsts && !hasLoans) return '';
 
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
-    const totalCommitted = subsTotal + instTotal;
+    const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
+    const totalCommitted = subsTotal + instTotal + loanTotal;
 
     return `
       <div class="card" style="margin-bottom:var(--space-md)">
@@ -629,6 +664,22 @@ const Dashboard = (() => {
           <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px">
             <span style="color:var(--text-secondary)">Installments total</span>
             <span style="color:var(--red);font-family:var(--font-mono)">${Fmt.compact(instTotal)}</span>
+          </div>
+        ` : ''}
+
+        ${hasLoans ? `
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;${hasSubs || hasInsts ? 'margin-top:var(--space-md)' : ''}">Loan Payments</div>
+          ${(loans || []).map(loan => `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:18px;width:24px;text-align:center;flex-shrink:0">🏦</span>
+              <span style="flex:1;font-size:13px">${App.esc(loan.name || 'Loan')}</span>
+              ${loan.remainingBalance ? `<span style="font-size:10px;color:var(--text-muted)">bal: ${Fmt.compact(loan.remainingBalance)}</span>` : ''}
+              <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:var(--red)">-${Fmt.compact(loan.monthlyPayment || 0)}</span>
+            </div>
+          `).join('')}
+          <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px">
+            <span style="color:var(--text-secondary)">Loans total</span>
+            <span style="color:var(--red);font-family:var(--font-mono)">${Fmt.compact(loanTotal)}</span>
           </div>
         ` : ''}
 
