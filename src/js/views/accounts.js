@@ -4,6 +4,7 @@
    ============================================================ */
 
 const Accounts = (() => {
+  let charts = {};
 
   async function render() {
     const container = document.getElementById('view-accounts');
@@ -17,6 +18,8 @@ const Accounts = (() => {
   }
 
   function renderFull(container, accounts, cards, allTx, activeTab) {
+    Object.values(charts).forEach(c => c?.destroy());
+    charts = {};
     const now = new Date();
     const [y, m] = App.state.activeMonth.split('-').map(Number);
     const isCurrentMonth = y === now.getFullYear() && m === now.getMonth() + 1;
@@ -100,6 +103,9 @@ const Accounts = (() => {
           `}
         </div>
 
+        <!-- Debt Trajectory -->
+        ${cards.length > 0 ? renderCardDebtOverview(cards) : ''}
+
         <!-- Future Faturas -->
         ${cards.length > 0 ? renderFuturasFaturas(cards) : ''}
 
@@ -116,6 +122,7 @@ const Accounts = (() => {
     if (activeTab === 'cashflow') {
       CashFlow.render(document.getElementById('cashflow-tab-content'));
     }
+    setTimeout(() => initDebtChart(cards), 0);
   }
 
   function switchTab(tab) {
@@ -678,6 +685,173 @@ const Accounts = (() => {
       App.toast('Installment deleted', 'success');
       render();
     } catch (e) { App.toast(e.message, 'error'); }
+  }
+
+  // ── Debt Trajectory ───────────────────────────────────────
+
+  function getMonthlyTotals(cards, months) {
+    const now          = new Date();
+    const installments = API.getInstallments();
+    const faturas      = API.getFaturas();
+    const PT_MONTHS    = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const result       = [];
+
+    for (let i = 0; i < months; i++) {
+      const d  = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const mo = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      let total = 0;
+
+      for (const card of cards) {
+        const manual = faturas.find(f => f.cardId === card.id && f.month === mo);
+        if (manual) {
+          total += manual.amount;
+        } else {
+          for (const inst of installments.filter(i => i.cardId === card.id)) {
+            const [sY, sM] = (inst.startMonth || '').split('-').map(Number);
+            if (!sY) continue;
+            const diff = (d.getFullYear() - sY) * 12 + (d.getMonth() + 1 - sM);
+            if (diff >= 0 && diff < inst.totalInstallments) total += inst.monthlyAmount;
+          }
+        }
+      }
+
+      result.push({ month: mo, label: `${PT_MONTHS[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`, total });
+    }
+
+    return result;
+  }
+
+  function renderCardDebtOverview(cards) {
+    const now          = new Date();
+    const installments = API.getInstallments();
+    const profile      = Store.profile.get();
+
+    // Total current card debt
+    const totalCurrentDebt = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+
+    // Total remaining installment commitment
+    let totalCommitted = 0;
+    let latestEndMonth = null;
+    for (const inst of installments) {
+      const [sY, sM] = (inst.startMonth || '').split('-').map(Number);
+      if (!sY) continue;
+      const elapsed   = (now.getFullYear() - sY) * 12 + (now.getMonth() + 1 - sM);
+      const remaining = Math.max(0, inst.totalInstallments - elapsed);
+      totalCommitted += remaining * inst.monthlyAmount;
+
+      const endMoAbs  = (sY * 12 + sM - 1) + inst.totalInstallments - 1;
+      const endYear   = Math.floor(endMoAbs / 12);
+      const endMonth  = (endMoAbs % 12) + 1;
+      const endKey    = `${endYear}-${String(endMonth).padStart(2, '0')}`;
+      if (!latestEndMonth || endKey > latestEndMonth) latestEndMonth = endKey;
+    }
+
+    const payoffDisplay = latestEndMonth ? Fmt.monthYear(latestEndMonth + '-01') : 'None';
+    const monthlyData   = getMonthlyTotals(cards, 1);
+    const thisMonthTotal = monthlyData[0]?.total || 0;
+
+    // "Live on the 15th" — can the adiantamento cover this month's card bills?
+    const adiantamento  = profile.adiantamentoAmount > 0
+      ? profile.adiantamentoAmount
+      : (profile.paymentSchedule || []).find(p => p.label === 'Adiantamento')?.amount
+        || (profile.salary * 0.4);
+    const liveOn15Pct   = thisMonthTotal > 0 ? Math.min(100, adiantamento / thisMonthTotal * 100) : 0;
+    const liveOn15Color = liveOn15Pct >= 100 ? 'var(--green)' : liveOn15Pct >= 70 ? 'var(--yellow)' : 'var(--red)';
+
+    return `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header">
+          <span class="card-title">Debt Trajectory</span>
+          <span class="pill ${totalCommitted > 0 ? 'pill-red' : 'pill-green'}" style="font-size:10px">
+            ${totalCommitted > 0 ? 'Active parcelas' : 'Debt-free'}
+          </span>
+        </div>
+
+        <div class="grid-3" style="margin-bottom:var(--space-md)">
+          <div style="text-align:center;padding:var(--space-sm);background:var(--bg-input);border-radius:var(--radius-md)">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">Current Balance</div>
+            <div style="font-size:14px;font-weight:700;color:var(--red)">${Fmt.compact(totalCurrentDebt)}</div>
+          </div>
+          <div style="text-align:center;padding:var(--space-sm);background:var(--bg-input);border-radius:var(--radius-md)">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">Committed</div>
+            <div style="font-size:14px;font-weight:700;color:var(--yellow)">${Fmt.compact(totalCommitted)}</div>
+          </div>
+          <div style="text-align:center;padding:var(--space-sm);background:var(--bg-input);border-radius:var(--radius-md)">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">Payoff</div>
+            <div style="font-size:13px;font-weight:700;color:${latestEndMonth ? 'var(--green)' : 'var(--text-muted)'}">${payoffDisplay}</div>
+          </div>
+        </div>
+
+        <!-- 12-month fatura bar chart -->
+        <div style="position:relative;height:160px;margin-bottom:var(--space-md)">
+          <canvas id="debt-trajectory-chart"></canvas>
+        </div>
+
+        <!-- Live on the 15th -->
+        <div style="border-top:1px solid var(--border);padding-top:var(--space-md)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:12px;font-weight:500">💡 Live on the 15th</span>
+            <span style="font-size:12px;font-weight:600;color:${liveOn15Color}">${Math.round(liveOn15Pct)}%</span>
+          </div>
+          <div class="progress-bar-wrap" style="height:8px">
+            <div class="progress-bar-fill" style="width:${Math.min(100, liveOn15Pct)}%;background:${liveOn15Color};transition:width .4s"></div>
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:5px">
+            Adiantamento ${Fmt.currency(adiantamento)} vs. this month's card bills ${Fmt.currency(thisMonthTotal)}
+            ${liveOn15Pct >= 100 ? ' ✅ You can fully cover this month\'s bills with your advance.' : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function initDebtChart(cards) {
+    const canvas = document.getElementById('debt-trajectory-chart');
+    if (!canvas || !cards.length) return;
+
+    const monthlyData  = getMonthlyTotals(cards, 12);
+    const currentMoKey = Fmt.currentMonthKey();
+    const isDark       = document.documentElement.getAttribute('data-theme') === 'dark';
+
+    const gridColor   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+    const tickColor   = isDark ? '#a0a0a0' : '#6b7280';
+    const axisColor   = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+    const tooltipOpts = isDark
+      ? { backgroundColor: '#141414', borderColor: '#333', borderWidth: 1, titleColor: '#fff', bodyColor: '#a0a0a0' }
+      : { backgroundColor: '#fff', borderColor: '#e5e5e7', borderWidth: 1, titleColor: '#1a1a2e', bodyColor: '#6b7280' };
+
+    const bgColors     = monthlyData.map(d => d.month === currentMoKey ? 'rgba(239,68,68,0.75)' : 'rgba(239,68,68,0.28)');
+    const borderColors = monthlyData.map(d => d.month === currentMoKey ? 'rgba(239,68,68,1)' : 'rgba(239,68,68,0.55)');
+
+    if (charts.debtTrajectory) charts.debtTrajectory.destroy();
+    charts.debtTrajectory = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: monthlyData.map(d => d.label),
+        datasets: [{
+          label: 'Total Fatura',
+          data: monthlyData.map(d => d.total),
+          backgroundColor: bgColors,
+          borderColor: borderColors,
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { ...tooltipOpts, padding: 10, cornerRadius: 8,
+            callbacks: { label: ctx => ` ${Fmt.currency(ctx.raw)}` }
+          }
+        },
+        scales: {
+          x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 } }, border: { color: axisColor } },
+          y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 }, callback: v => Fmt.compact(v) }, border: { color: axisColor } }
+        }
+      }
+    });
   }
 
   return {
