@@ -13,6 +13,7 @@ const Transactions = (() => {
   // Populated when Products tab renders; keyed by array index for onclick safety
   let productCache = [];
   let productSearchQuery = '';
+  let accountMap = new Map();
 
   async function render() {
     const container = document.getElementById('view-transactions');
@@ -21,6 +22,12 @@ const Transactions = (() => {
     try {
       allTx    = await API.getTransactions({ month: App.state.activeMonth });
       filtered = allTx;
+
+      // Build account/card lookup for source badges
+      accountMap = new Map();
+      (Store.data.getAccounts() || []).forEach(a => accountMap.set(a.id, { name: a.name, icon: '🏦' }));
+      (Store.data.getCreditCards() || []).forEach(c => accountMap.set(c.id, { name: c.name, icon: '💳' }));
+
       renderFull(container);
     } catch (e) {
       container.innerHTML = `
@@ -183,12 +190,13 @@ const Transactions = (() => {
 
   function renderTxItem(tx) {
     const cat = App.getCat(tx.category);
+    const acctInfo = tx.accountId ? accountMap.get(tx.accountId) : null;
     return `
       <div class="tx-item" onclick="App.openTxDetail('${App.esc(tx.id)}')" style="cursor:pointer">
         <div class="tx-icon">${cat.emoji}</div>
         <div class="tx-info">
           <div class="tx-name">${App.esc(tx.description || tx.merchant || 'Transaction')}</div>
-          <div class="tx-meta">${cat.label}${tx.merchant && tx.merchant !== tx.description ? ' · ' + App.esc(tx.merchant) : ''}</div>
+          <div class="tx-meta">${cat.label}${tx.merchant && tx.merchant !== tx.description ? ' · ' + App.esc(tx.merchant) : ''}${acctInfo ? ' · <span style="font-size:10px;padding:1px 5px;background:var(--bg-input);border-radius:var(--radius-sm)">' + acctInfo.icon + ' ' + App.esc(acctInfo.name) + '</span>' : ''}</div>
         </div>
         <div class="tx-amount ${tx.type === 'income' ? 'income' : 'expense'}">${tx.type === 'income' ? '+' : '-'}${Fmt.currency(tx.amount)}</div>
       </div>
