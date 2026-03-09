@@ -2,7 +2,7 @@
   "name": "Matt Money — Financial Command Center",
   "short_name": "Matt Money",
   "description": "Personal financial tracking with F1-style data analysis",
-  "start_url": "/",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#e8002d",
@@ -27,7 +27,7 @@
       "name": "Quick Add",
       "short_name": "Add",
       "description": "Add a new transaction",
-      "url": "/?view=add",
+      "url": "./?view=add",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
     }
   ]

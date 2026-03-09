@@ -10,12 +10,14 @@ const Patrimonio = (() => {
     container.innerHTML = renderSkeleton();
 
     try {
-      const [data, debts, creditCards] = await Promise.all([
+      const [data, debts, creditCards, accounts, loans] = await Promise.all([
         API.getPatrimonio(),
         API.getDebts(),
-        API.getCreditCards()
+        API.getCreditCards(),
+        API.getAccounts(),
+        Promise.resolve(API.getLoans())
       ]);
-      renderFull(container, data, debts, creditCards);
+      renderFull(container, data, debts, creditCards, accounts, loans);
     } catch (e) {
       container.innerHTML = `
         <div class="empty-state">
@@ -36,7 +38,7 @@ const Patrimonio = (() => {
     `;
   }
 
-  function renderFull(container, data, debts, creditCards) {
+  function renderFull(container, data, debts, creditCards, accounts, loans) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
@@ -49,9 +51,11 @@ const Patrimonio = (() => {
     const investments = data?.investments ?? 0;
     const debtFromDebts = debts?.reduce((s, d) => s + (d.balance || 0), 0) || 0;
     const debtFromCards = creditCards?.reduce((s, c) => s + (c.currentBalance || 0), 0) || 0;
-    const totalDebt = debtFromDebts + debtFromCards || profile.debtTotal || 0;
+    const debtFromLoans = (loans || []).reduce((s, l) => s + (l.remainingBalance || l.amount || 0), 0);
+    const totalDebt = (debtFromDebts + debtFromCards + debtFromLoans) || 0;
 
-    const totalAssets      = fgts + carValue + savings + investments;
+    const bankTotal = (accounts || []).reduce((s, a) => s + (a.balance || 0), 0);
+    const totalAssets      = fgts + carValue + savings + investments + Math.max(0, bankTotal);
     const netWorth         = totalAssets - totalDebt;
     const netWorthPositive = netWorth >= 0;
 
