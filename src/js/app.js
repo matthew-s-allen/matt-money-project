@@ -712,282 +712,612 @@ const App = (() => {
    ============================================================ */
 
 const SetupWizard = (() => {
-  const TOTAL_STEPS = 6;
+  const TOTAL_STEPS = 7;
   let currentStep = 1;
   let accounts = [];
   let cards = [];
+  let loans = [];
+  let deductionsList = [];
+  let benefitsList = [];
+  let vacationPlans = [];
+  let incomeChart = null;
+
+  const STEP_LABELS = ['Profile', 'Salary', 'Patrimônio', 'Accounts', 'Cards', 'Loans', 'Budgets'];
 
   function init() {
     currentStep = 1;
+    const profile = Store.profile.get();
 
-    // Pre-populate with existing data if re-running
     accounts = Store.data.getAccounts();
     cards = Store.data.getCreditCards();
+    loans = Store.data.getLoans();
 
-    if (accounts.length === 0) {
-      accounts.push({ name: '', bank: '', type: 'checking', balance: 0 });
-    }
-    if (cards.length === 0) {
-      cards.push({ name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
-    }
+    deductionsList = profile.deductionsList && profile.deductionsList.length
+      ? JSON.parse(JSON.stringify(profile.deductionsList))
+      : [
+          { id: 'health', name: 'Plano de Saude', type: 'fixed', amount: profile.deductHealthPlan || 0 },
+          { id: 'dental', name: 'Dental', type: 'fixed', amount: profile.deductDental || 0 },
+          { id: 'vt', name: 'Vale Transporte', type: 'fixed', amount: profile.deductValeTransporte || 0 }
+        ];
 
-    // Pre-fill step 1: profile
-    const profile = Store.profile.get();
+    benefitsList = profile.benefitsList && profile.benefitsList.length
+      ? JSON.parse(JSON.stringify(profile.benefitsList))
+      : [
+          { id: 'va', name: 'Vale Alimentacao', type: 'fixed', amount: profile.benefitVA || 0 },
+          { id: 'vr', name: 'Vale Refeicao', type: 'fixed', amount: profile.benefitVR || 0 }
+        ];
+
+    vacationPlans = profile.vacationPlans ? JSON.parse(JSON.stringify(profile.vacationPlans)) : [];
+
+    if (accounts.length === 0) accounts.push({ id: crypto.randomUUID(), name: '', bank: '', type: 'checking', balance: 0, isPrimary: true });
+    if (cards.length === 0) cards.push({ id: crypto.randomUUID(), name: '', brand: '', lastFourDigits: '', limit: 0, availableCredit: 0, currentBalance: 0, closingDay: '', dueDay: '', lastFaturaMonth: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
+
     document.getElementById('setup-name').value = profile.name || '';
     document.getElementById('setup-employer').value = profile.employerName || '';
-    document.getElementById('setup-salary').value = profile.salary || '';
     document.getElementById('setup-work-start').value = profile.workStartDate || '';
+    setSalaryType(profile.salaryType || 'mensalista', true);
+    if (profile.salaryType === 'horista') {
+      const hrEl = document.getElementById('setup-hourly-rate');
+      const hwEl = document.getElementById('setup-hours-week');
+      if (hrEl) hrEl.value = profile.hourlyRate || '';
+      if (hwEl) hwEl.value = profile.hoursPerWeek || 44;
+    } else {
+      const salEl = document.getElementById('setup-salary');
+      if (salEl) salEl.value = profile.salary || '';
+    }
 
-    // Pre-fill step 2: income schedule + employment & salary
-    document.getElementById('setup-adiantamento').value      = profile.adiantamentoAmount || '';
-    document.getElementById('setup-adiantamento-day').value  = profile.adiantamentoDay || 15;
-    document.getElementById('setup-salary-day').value        = profile.salaryDay || 30;
-    document.getElementById('setup-vacation-days').value     = profile.vacationDaysTotal || 30;
-    document.getElementById('setup-vacation-periods').value  = profile.vacationPeriods || 3;
-    document.getElementById('setup-vacation-sell').value     = profile.vacationDaysToSell || 0;
-    document.getElementById('setup-deduct-health').value     = profile.deductHealthPlan || '';
-    document.getElementById('setup-deduct-dental').value     = profile.deductDental || '';
-    document.getElementById('setup-deduct-vt').value         = profile.deductValeTransporte || '';
-    document.getElementById('setup-deduct-other').value      = profile.deductOther || '';
-    document.getElementById('setup-benefit-va').value        = profile.benefitVA || '';
-    document.getElementById('setup-benefit-vr').value        = profile.benefitVR || '';
-    document.getElementById('setup-benefit-other').value     = profile.benefitOther || '';
+    const vacDaysEl = document.getElementById('setup-vacation-days');
+    const vacPerEl = document.getElementById('setup-vacation-periods');
+    const m1El = document.getElementById('setup-13-month1');
+    if (vacDaysEl) vacDaysEl.value = profile.vacationDaysTotal || 30;
+    if (vacPerEl) vacPerEl.value = profile.vacationPeriods || 3;
+    if (m1El) m1El.value = profile.decimo13Month1 || 11;
+    setFrequency(profile.paymentFrequency || 'quinzenal', profile.paymentSchedule || null, true);
 
-    // Pre-fill step 3: goals & assets
-    document.getElementById('setup-savings-goal').value = profile.savingsGoal || '';
-    document.getElementById('setup-target-years').value = profile.targetYears || '';
-    document.getElementById('setup-fgts').value = profile.fgts || '';
-    document.getElementById('setup-car-value').value = profile.carValue || '';
-
+    const goalEl = document.getElementById('setup-savings-goal');
+    const yearsEl = document.getElementById('setup-target-years');
+    const fgtsEl = document.getElementById('setup-fgts');
+    const carEl = document.getElementById('setup-car-value');
+    const savEl = document.getElementById('setup-savings');
+    const invEl = document.getElementById('setup-investments');
+    if (goalEl) goalEl.value = profile.savingsGoal || '';
+    if (yearsEl) yearsEl.value = profile.targetYears || '';
+    if (fgtsEl) fgtsEl.value = profile.fgts || '';
+    if (carEl) carEl.value = profile.carValue || '';
     const patrimonio = Store.data.getPatrimonio();
-    document.getElementById('setup-savings').value = patrimonio.savings || '';
-    document.getElementById('setup-investments').value = patrimonio.investments || '';
+    if (savEl) savEl.value = patrimonio.savings || '';
+    if (invEl) invEl.value = patrimonio.investments || '';
 
-    // Setup import handler
-    document.getElementById('setup-import-file').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        await API.importData(file);
-        App.toast('Backup imported! Completing setup...', 'success');
-        Store.data.setSetupDone(true);
-        App.showApp();
-      } catch(err) {
-        App.toast('Import failed: ' + err.message, 'error');
-      }
-      e.target.value = '';
-    });
+    const importEl = document.getElementById('setup-import-file');
+    if (importEl && !importEl._handlerBound) {
+      importEl._handlerBound = true;
+      importEl.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          await API.importData(file);
+          App.toast('Backup imported!', 'success');
+          Store.data.setSetupDone(true);
+          App.showApp();
+        } catch(err) { App.toast('Import failed: ' + err.message, 'error'); }
+        e.target.value = '';
+      });
+    }
 
-    // Live salary preview - attach listeners to step 2 inputs
-    const salaryInputs = ['setup-deduct-health','setup-deduct-dental','setup-deduct-vt','setup-deduct-other',
-      'setup-benefit-va','setup-benefit-vr','setup-benefit-other','setup-vacation-sell'];
-    salaryInputs.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('input', updateSalaryPreview);
-    });
-
-    // Live goal projection hint
-    ['setup-savings-goal','setup-target-years'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.addEventListener('input', updateGoalHint);
-    });
-
+    renderDeductions();
+    renderBenefits();
+    renderVacationPlans();
     renderAccounts();
     renderCards();
+    renderLoans();
     renderCategories();
     showStep(1);
+  }
+
+  function setSalaryType(type, silent) {
+    document.querySelectorAll('#setup-salary-type-ctrl .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.val === type);
+    });
+    const mensEl = document.getElementById('setup-mensalista-fields');
+    const horaEl = document.getElementById('setup-horista-fields');
+    if (mensEl) mensEl.classList.toggle('hidden', type === 'horista');
+    if (horaEl) horaEl.classList.toggle('hidden', type !== 'horista');
+    if (!silent) onSalaryChange();
+  }
+
+  function onHourlyChange() {
+    const rate = parseFloat(document.getElementById('setup-hourly-rate')?.value) || 0;
+    const hrs = parseFloat(document.getElementById('setup-hours-week')?.value) || 44;
+    const monthly = rate * hrs * 4.33333;
+    const calcEl = document.getElementById('setup-horista-calc');
+    if (calcEl) {
+      if (rate > 0) {
+        calcEl.style.display = 'block';
+        calcEl.innerHTML = '<strong>Estimado/mes:</strong> ' + Fmt.currency(monthly);
+      } else { calcEl.style.display = 'none'; }
+    }
+    const salEl = document.getElementById('setup-salary');
+    if (salEl) salEl.value = monthly.toFixed(2);
+    onSalaryChange();
+  }
+
+  function onSalaryChange() {
+    updateSalaryPreview();
+    buildIncomeChart();
+    updatePaymentScheduleAmounts();
+  }
+
+  let paymentSchedule = [
+    { label: 'Adiantamento', day: 15, percent: 40, isFixed: false, amount: 0 },
+    { label: 'Salario', day: 30, percent: 60, isFixed: false, amount: 0 }
+  ];
+
+  function setFrequency(freq, existingSchedule, silent) {
+    document.querySelectorAll('#setup-freq-ctrl .seg-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.val === freq);
+    });
+    if (freq === 'monthly') {
+      paymentSchedule = [{ label: 'Salario', day: 30, percent: 100, isFixed: false, amount: 0 }];
+    } else if (freq === 'quinzenal') {
+      paymentSchedule = existingSchedule && existingSchedule.length === 2 ? existingSchedule : [
+        { label: 'Adiantamento', day: 15, percent: 40, isFixed: false, amount: 0 },
+        { label: 'Salario', day: 30, percent: 60, isFixed: false, amount: 0 }
+      ];
+    } else {
+      paymentSchedule = existingSchedule && existingSchedule.length > 0 ? existingSchedule : [
+        { label: 'Pagamento 1', day: 15, percent: 50, isFixed: false, amount: 0 },
+        { label: 'Pagamento 2', day: 30, percent: 50, isFixed: false, amount: 0 }
+      ];
+    }
+    renderPaymentSchedule(freq);
+    if (!silent) { updatePaymentScheduleAmounts(); buildIncomeChart(); }
+  }
+
+  function renderPaymentSchedule(freq) {
+    const el = document.getElementById('setup-payment-schedule');
+    if (!el) return;
+    el.innerHTML = paymentSchedule.map((p, i) => {
+      const isCustom = freq === 'custom';
+      return '<div style="display:flex;gap:var(--space-sm);align-items:flex-start;margin-bottom:var(--space-sm);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px var(--space-md)">' +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="display:flex;gap:var(--space-sm);margin-bottom:6px">' +
+            '<input type="text" class="form-input sched-label" value="' + App.esc(p.label) + '" placeholder="Nome" style="flex:1;font-size:13px" oninput="SetupWizard.savePaymentSchedule()" />' +
+            '<div style="flex-shrink:0">' +
+              '<div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">DIA</div>' +
+              '<input type="number" class="form-input sched-day" value="' + p.day + '" min="1" max="31" style="width:56px;font-size:13px;text-align:center" inputmode="numeric" oninput="SetupWizard.savePaymentSchedule()" />' +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:4px;margin-bottom:6px">' +
+            '<button class="seg-btn ' + (!p.isFixed ? 'active' : '') + '" style="flex:1;padding:4px 8px;font-size:11px" onclick="SetupWizard.toggleSchedFixed(' + i + ',false)">% do net</button>' +
+            '<button class="seg-btn ' + (p.isFixed ? 'active' : '') + '" style="flex:1;padding:4px 8px;font-size:11px" onclick="SetupWizard.toggleSchedFixed(' + i + ',true)">R$ fixo</button>' +
+          '</div>' +
+          (p.isFixed
+            ? '<input type="number" class="form-input sched-amount" value="' + (p.amount || '') + '" placeholder="0.00" inputmode="decimal" style="font-size:13px" oninput="SetupWizard.savePaymentSchedule()" />'
+            : '<div style="display:flex;align-items:center;gap:6px">' +
+                '<input type="number" class="form-input sched-percent" value="' + p.percent + '" min="1" max="100" style="width:60px;font-size:13px;text-align:center" inputmode="numeric" oninput="SetupWizard.savePaymentSchedule()" />' +
+                '<span style="font-size:12px;color:var(--text-muted)">% net =</span>' +
+                '<span id="sched-calc-' + i + '" style="font-size:13px;font-weight:600;color:var(--green)"></span>' +
+              '</div>'
+          ) +
+        '</div>' +
+        (isCustom && paymentSchedule.length > 1
+          ? '<button onclick="SetupWizard.removePaymentRow(' + i + ')" style="color:var(--red);background:none;border:none;font-size:18px;cursor:pointer;padding:4px;flex-shrink:0;margin-top:20px">x</button>'
+          : '') +
+        '</div>';
+    }).join('');
+    if (freq === 'custom') {
+      el.insertAdjacentHTML('beforeend', '<button class="btn btn-ghost btn-sm" onclick="SetupWizard.addPaymentRow()" style="width:100%;margin-top:4px">+ Adicionar pagamento</button>');
+    }
+    updatePaymentScheduleAmounts();
+  }
+
+  function savePaymentSchedule() {
+    const labelEls = document.querySelectorAll('#setup-payment-schedule .sched-label');
+    paymentSchedule = Array.from(labelEls).map((labelEl, i) => {
+      const row = labelEl.closest('div[style]');
+      return {
+        label: labelEl.value || '',
+        day: parseInt(row.querySelector('.sched-day')?.value) || 30,
+        isFixed: paymentSchedule[i]?.isFixed || false,
+        percent: parseFloat(row.querySelector('.sched-percent')?.value) || (paymentSchedule[i]?.percent || 50),
+        amount: parseFloat(row.querySelector('.sched-amount')?.value) || 0
+      };
+    });
+    updatePaymentScheduleAmounts();
+    buildIncomeChart();
+  }
+
+  function toggleSchedFixed(idx, isFixed) {
+    if (paymentSchedule[idx]) paymentSchedule[idx].isFixed = isFixed;
+    const freq = document.querySelector('#setup-freq-ctrl .seg-btn.active')?.dataset.val || 'quinzenal';
+    renderPaymentSchedule(freq);
+  }
+
+  function addPaymentRow() {
+    savePaymentSchedule();
+    paymentSchedule.push({ label: 'Pagamento ' + (paymentSchedule.length + 1), day: 15, percent: 0, isFixed: false, amount: 0 });
+    renderPaymentSchedule('custom');
+  }
+
+  function removePaymentRow(idx) {
+    savePaymentSchedule();
+    if (paymentSchedule.length <= 1) return;
+    paymentSchedule.splice(idx, 1);
+    renderPaymentSchedule('custom');
+  }
+
+  function updatePaymentScheduleAmounts() {
+    const gross = getCurrentGross();
+    const b = gross ? API.calcSalaryBreakdown({ ...Store.profile.get(), salary: gross, ...buildLegacyDeductFields() }) : null;
+    const net = b ? b.netSalary : 0;
+    paymentSchedule.forEach((p, i) => {
+      const el = document.getElementById('sched-calc-' + i);
+      if (el) {
+        const val = p.isFixed ? p.amount : (net * (p.percent / 100));
+        el.textContent = Fmt.currency(val);
+      }
+    });
   }
 
   function updateSalaryPreview() {
     const preview = document.getElementById('setup-salary-preview');
     if (!preview) return;
-    const profile = Store.profile.get();
-    const gross = profile.salary || 0;
+    const gross = getCurrentGross();
     if (!gross) { preview.innerHTML = ''; return; }
-
-    const tempProfile = {
-      ...profile,
-      deductHealthPlan: Number(document.getElementById('setup-deduct-health').value) || 0,
-      deductDental: Number(document.getElementById('setup-deduct-dental').value) || 0,
-      deductValeTransporte: Number(document.getElementById('setup-deduct-vt').value) || 0,
-      deductOther: Number(document.getElementById('setup-deduct-other').value) || 0,
-      benefitVA: Number(document.getElementById('setup-benefit-va').value) || 0,
-      benefitVR: Number(document.getElementById('setup-benefit-vr').value) || 0,
-      benefitOther: Number(document.getElementById('setup-benefit-other').value) || 0,
-      vacationDaysToSell: Number(document.getElementById('setup-vacation-sell').value) || 0
-    };
-
-    const b = API.calcSalaryBreakdown(tempProfile);
-    preview.innerHTML = `
-      <div style="font-size:12px;font-weight:600;margin-bottom:var(--space-sm)">Salary Preview</div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px">
-        <span>Gross salary</span><span>${Fmt.currency(b.gross)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px">
-        <span>INSS</span><span>-${Fmt.currency(b.inss)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px">
-        <span>IRRF</span><span>-${Fmt.currency(b.irrf)}</span>
-      </div>
-      ${b.healthPlan ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Health plan</span><span>-${Fmt.currency(b.healthPlan)}</span></div>` : ''}
-      ${b.dental ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Dental</span><span>-${Fmt.currency(b.dental)}</span></div>` : ''}
-      ${b.vt ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Vale Transporte</span><span>-${Fmt.currency(b.vt)}</span></div>` : ''}
-      ${b.otherDeduct ? `<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>Other deductions</span><span>-${Fmt.currency(b.otherDeduct)}</span></div>` : ''}
-      <div style="border-top:1px solid var(--border);margin:var(--space-sm) 0;padding-top:var(--space-sm);display:flex;justify-content:space-between;font-size:13px;font-weight:600">
-        <span>Net salary</span><span style="color:var(--green)">${Fmt.currency(b.netSalary)}</span>
-      </div>
-      ${b.totalBenefits > 0 ? `
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--blue);margin-bottom:2px">
-          <span>+ Benefits (VA/VR/other)</span><span>+${Fmt.currency(b.totalBenefits)}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-top:4px">
-          <span>Total take-home</span><span style="color:var(--green)">${Fmt.currency(b.totalTakeHome)}</span>
-        </div>
-      ` : ''}
-      <div style="border-top:1px solid var(--border);margin-top:var(--space-sm);padding-top:var(--space-sm);font-size:11px;color:var(--text-muted)">
-        FGTS: ${Fmt.currency(b.fgtsMonthly)}/mo · 13th: ${Fmt.currency(b.decimoTerceiroNet)} net ·
-        Vacation bonus: ${Fmt.currency(b.vacationBonus)}
-        ${b.daysToSell > 0 ? ` · Sold ${b.daysToSell} days: ${Fmt.currency(b.abonoPecuniario)}` : ''}
-      </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
-        Annual total: <strong style="color:var(--green)">${Fmt.currency(b.annualTotal)}</strong>
-      </div>
-    `;
+    const b = API.calcSalaryBreakdown({ ...Store.profile.get(), salary: gross, ...buildLegacyDeductFields() });
+    const rows = deductionsList.filter(d => d.amount > 0).map(d => {
+      const amt = d.type === 'percent' ? gross * (d.amount / 100) : d.amount;
+      return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:1px"><span>- ' + App.esc(d.name) + '</span><span>' + Fmt.currency(amt) + '</span></div>';
+    }).join('');
+    preview.innerHTML =
+      '<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text-secondary)">Holerite estimado</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:2px"><span style="color:var(--text-secondary)">Bruto</span><span>' + Fmt.currency(b.gross) + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:1px"><span>- INSS</span><span>' + Fmt.currency(b.inss) + '</span></div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:1px"><span>- IRRF</span><span>' + Fmt.currency(b.irrf) + '</span></div>' +
+      rows +
+      '<div style="border-top:1px solid var(--border);margin:6px 0;padding-top:6px;display:flex;justify-content:space-between;font-size:14px;font-weight:700"><span>Liquido</span><span style="color:var(--green)">' + Fmt.currency(b.netSalary) + '</span></div>' +
+      (b.totalBenefits > 0
+        ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--blue)"><span>+ Beneficios</span><span>+' + Fmt.currency(b.totalBenefits) + '</span></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:600;margin-top:4px"><span>Total take-home</span><span style="color:var(--green)">' + Fmt.currency(b.totalTakeHome) + '</span></div>'
+        : '') +
+      '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;border-top:1px solid var(--border);padding-top:6px">FGTS: ' + Fmt.currency(b.fgtsMonthly) + '/mes | 13 deg liquido: ' + Fmt.currency(b.decimoTerceiroNet) + ' | Ferias+1/3: ' + Fmt.currency(b.vacationBonus) + '</div>';
   }
 
-  function showStep(step) {
-    currentStep = step;
-    for (let i = 1; i <= TOTAL_STEPS; i++) {
-      document.getElementById(`setup-step-${i}`).classList.toggle('hidden', i !== step);
-      const dot = document.querySelector(`.setup-step-dot[data-step="${i}"]`);
-      if (dot) {
-        dot.classList.toggle('active', i <= step);
-        dot.classList.toggle('done', i < step);
-      }
+  function getCurrentGross() {
+    const typeBtn = document.querySelector('#setup-salary-type-ctrl .seg-btn.active');
+    if (typeBtn?.dataset.val === 'horista') {
+      const rate = parseFloat(document.getElementById('setup-hourly-rate')?.value) || 0;
+      const hrs = parseFloat(document.getElementById('setup-hours-week')?.value) || 44;
+      return rate * hrs * 4.33333;
     }
-    // Hide intro subtitle + import on steps 2+
-    const subtitle = document.getElementById('setup-intro-subtitle');
-    const importSec = document.getElementById('setup-import-section');
-    if (subtitle) subtitle.classList.toggle('hidden', step > 1);
-    if (importSec) importSec.classList.toggle('hidden', step > 1);
+    return parseFloat(document.getElementById('setup-salary')?.value) || Store.profile.get().salary || 0;
+  }
 
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  function buildLegacyDeductFields() {
+    let deductHealthPlan = 0, deductDental = 0, deductValeTransporte = 0, deductOther = 0;
+    let benefitVA = 0, benefitVR = 0, benefitOther = 0;
+    const gross = getCurrentGross();
+    deductionsList.forEach(d => {
+      const amt = d.type === 'percent' ? gross * (d.amount / 100) : (d.amount || 0);
+      if (d.id === 'health') deductHealthPlan = amt;
+      else if (d.id === 'dental') deductDental = amt;
+      else if (d.id === 'vt') deductValeTransporte = amt;
+      else deductOther += amt;
+    });
+    benefitsList.forEach(b => {
+      const amt = b.amount || 0;
+      if (b.id === 'va') benefitVA = amt;
+      else if (b.id === 'vr') benefitVR = amt;
+      else benefitOther += amt;
+    });
+    return { deductHealthPlan, deductDental, deductValeTransporte, deductOther, benefitVA, benefitVR, benefitOther };
+  }
 
-    if (step === 2) updateSalaryPreview();
-    if (step === 3) updateGoalHint();
+  function buildIncomeChart() {
+    const canvas = document.getElementById('setup-income-chart');
+    if (!canvas || !window.Chart) return;
+    const gross = getCurrentGross();
+    if (!gross) { if (incomeChart) { incomeChart.destroy(); incomeChart = null; } return; }
+    const profile = Store.profile.get();
+    const b = API.calcSalaryBreakdown({ ...profile, salary: gross, ...buildLegacyDeductFields() });
+    const baseNet = b.netSalary + b.totalBenefits;
+    const decimo13m1 = parseInt(document.getElementById('setup-13-month1')?.value) || 11;
+    const now = new Date();
+    const labels = [], baseData = [], extraData = [];
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const mo = d.getMonth() + 1;
+      const moStr = d.getFullYear() + '-' + String(mo).padStart(2,'0');
+      labels.push(Fmt.monthYear(moStr + '-01').split(' ')[0]);
+      baseData.push(parseFloat(baseNet.toFixed(2)));
+      let extra = 0;
+      const vac = vacationPlans.find(v => v.month === moStr);
+      if (vac) extra += b.vacationBonus;
+      if (mo === decimo13m1) extra += gross / 2;
+      if (mo === 12) extra += b.decimoTerceiroNet / 2;
+      extraData.push(parseFloat(extra.toFixed(2)));
+    }
+    if (incomeChart) incomeChart.destroy();
+    incomeChart = new window.Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Salario liquido', data: baseData, backgroundColor: 'rgba(99,102,241,0.75)', borderRadius: 4, stack: 'a' },
+          { label: 'Extras (13/Ferias)', data: extraData, backgroundColor: 'rgba(52,211,153,0.8)', borderRadius: 4, stack: 'a' }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { font: { size: 11 }, color: '#9ca3af', boxWidth: 12, padding: 8 } } },
+        scales: {
+          x: { stacked: true, ticks: { font: { size: 10 }, color: '#9ca3af' }, grid: { display: false } },
+          y: { stacked: true, ticks: { font: { size: 10 }, color: '#9ca3af', callback: v => 'R$' + (v/1000).toFixed(0) + 'k' }, grid: { color: 'rgba(128,128,128,0.1)' } }
+        }
+      }
+    });
+  }
+
+  function renderDeductions() {
+    const el = document.getElementById('setup-deductions-list');
+    if (!el) return;
+    el.innerHTML = deductionsList.map((d, i) =>
+      '<div style="display:flex;gap:var(--space-sm);align-items:center;margin-bottom:8px">' +
+        '<input type="text" class="form-input" value="' + App.esc(d.name) + '" placeholder="Desconto" style="flex:1;min-width:0;font-size:13px" oninput="SetupWizard.saveDeduction(' + i + ',\'name\',this.value)" />' +
+        '<div style="display:flex;gap:2px;flex-shrink:0">' +
+          '<button class="seg-btn ' + (d.type==='fixed'?'active':'') + '" style="padding:5px 9px;font-size:11px" onclick="SetupWizard.saveDeduction(' + i + ',\'type\',\'fixed\')">R$</button>' +
+          '<button class="seg-btn ' + (d.type==='percent'?'active':'') + '" style="padding:5px 9px;font-size:11px" onclick="SetupWizard.saveDeduction(' + i + ',\'type\',\'percent\')">%</button>' +
+        '</div>' +
+        '<div style="position:relative;width:90px;flex-shrink:0">' +
+          (d.type==='percent'
+            ? '<span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none">%</span><input type="number" class="form-input" value="' + (d.amount||'') + '" placeholder="0" style="font-size:13px;padding-right:24px" inputmode="decimal" oninput="SetupWizard.saveDeduction(' + i + ',\'amount\',this.value)" />'
+            : '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none">R$</span><input type="number" class="form-input" value="' + (d.amount||'') + '" placeholder="0" style="font-size:13px;padding-left:24px" inputmode="decimal" oninput="SetupWizard.saveDeduction(' + i + ',\'amount\',this.value)" />'
+          ) +
+        '</div>' +
+        '<button onclick="SetupWizard.removeDeduction(' + i + ')" style="color:var(--red);background:none;border:none;font-size:18px;cursor:pointer;flex-shrink:0;padding:2px 4px">x</button>' +
+      '</div>'
+    ).join('');
+    updateSalaryPreview();
+    buildIncomeChart();
+  }
+
+  function saveDeduction(idx, field, val) {
+    if (!deductionsList[idx]) return;
+    if (field === 'amount') val = parseFloat(val) || 0;
+    deductionsList[idx][field] = val;
+    if (field === 'type') renderDeductions(); else { updateSalaryPreview(); buildIncomeChart(); }
+  }
+
+  function addDeduction() {
+    deductionsList.push({ id: 'custom_' + crypto.randomUUID(), name: '', type: 'fixed', amount: 0 });
+    renderDeductions();
+  }
+
+  function removeDeduction(idx) {
+    deductionsList.splice(idx, 1);
+    renderDeductions();
+  }
+
+  function renderBenefits() {
+    const el = document.getElementById('setup-benefits-list');
+    if (!el) return;
+    el.innerHTML = benefitsList.map((b, i) =>
+      '<div style="display:flex;gap:var(--space-sm);align-items:center;margin-bottom:8px">' +
+        '<input type="text" class="form-input" value="' + App.esc(b.name) + '" placeholder="Beneficio" style="flex:1;min-width:0;font-size:13px" oninput="SetupWizard.saveBenefit(' + i + ',\'name\',this.value)" />' +
+        '<div style="position:relative;width:100px;flex-shrink:0">' +
+          '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none">R$</span>' +
+          '<input type="number" class="form-input" value="' + (b.amount||'') + '" placeholder="0" style="font-size:13px;padding-left:24px" inputmode="decimal" oninput="SetupWizard.saveBenefit(' + i + ',\'amount\',this.value)" />' +
+        '</div>' +
+        '<button onclick="SetupWizard.removeBenefit(' + i + ')" style="color:var(--red);background:none;border:none;font-size:18px;cursor:pointer;flex-shrink:0;padding:2px 4px">x</button>' +
+      '</div>'
+    ).join('');
+    updateSalaryPreview();
+  }
+
+  function saveBenefit(idx, field, val) {
+    if (!benefitsList[idx]) return;
+    if (field === 'amount') val = parseFloat(val) || 0;
+    benefitsList[idx][field] = val;
+    updateSalaryPreview(); buildIncomeChart();
+  }
+
+  function addBenefit() {
+    benefitsList.push({ id: 'custom_' + crypto.randomUUID(), name: '', type: 'fixed', amount: 0 });
+    renderBenefits();
+  }
+
+  function removeBenefit(idx) {
+    benefitsList.splice(idx, 1);
+    renderBenefits();
+  }
+
+  function renderVacationPlans() {
+    const el = document.getElementById('setup-vacation-plans-list');
+    if (!el) return;
+    const periods = parseInt(document.getElementById('setup-vacation-periods')?.value) || 3;
+    el.innerHTML = vacationPlans.map((v, i) =>
+      '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-sm) var(--space-md);margin-bottom:8px">' +
+        '<div style="display:flex;gap:var(--space-sm);align-items:center;flex-wrap:wrap;margin-bottom:6px">' +
+          '<select class="form-input" style="width:90px;flex-shrink:0;font-size:13px" onchange="SetupWizard.saveVacPlan(' + i + ',\'period\',this.value)">' +
+            [1,2,3].filter(p => p <= periods).map(p => '<option value="' + p + '"' + (v.period==p?' selected':'') + '>Periodo ' + p + '</option>').join('') +
+          '</select>' +
+          '<input type="month" class="form-input" value="' + (v.month||'') + '" style="flex:1;min-width:110px;font-size:13px" onchange="SetupWizard.saveVacPlan(' + i + ',\'month\',this.value)" />' +
+          '<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">' +
+            '<input type="number" class="form-input" value="' + (v.daysToSell||0) + '" min="0" max="10" style="width:50px;font-size:13px;text-align:center" inputmode="numeric" onchange="SetupWizard.saveVacPlan(' + i + ',\'daysToSell\',this.value)" />' +
+            '<span style="font-size:11px;color:var(--text-muted);white-space:nowrap">dias vender</span>' +
+          '</div>' +
+          '<button onclick="SetupWizard.removeVacPlan(' + i + ')" style="color:var(--red);background:none;border:none;font-size:18px;cursor:pointer;flex-shrink:0">x</button>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<input type="checkbox" id="vac-13-' + i + '" ' + (v.take13Advance?'checked':'') + ' style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer" onchange="SetupWizard.saveVacPlan(' + i + ',\'take13Advance\',this.checked)" />' +
+          '<label for="vac-13-' + i + '" style="font-size:12px;color:var(--text-secondary);cursor:pointer">Receber adiantamento do 13 junto com as ferias</label>' +
+        '</div>' +
+      '</div>'
+    ).join('');
+    buildIncomeChart();
+  }
+
+  function saveVacPlan(idx, field, val) {
+    if (!vacationPlans[idx]) return;
+    if (field === 'take13Advance') vacationPlans[idx][field] = val;
+    else if (field === 'daysToSell') vacationPlans[idx][field] = parseInt(val) || 0;
+    else if (field === 'period') vacationPlans[idx][field] = parseInt(val) || 1;
+    else vacationPlans[idx][field] = val;
+    buildIncomeChart();
+  }
+
+  function addVacationPlan() {
+    const periods = parseInt(document.getElementById('setup-vacation-periods')?.value) || 3;
+    const used = vacationPlans.map(v => v.period);
+    const nextPeriod = [1,2,3].find(p => !used.includes(p) && p <= periods) || 1;
+    vacationPlans.push({ period: nextPeriod, month: '', daysToSell: 0, take13Advance: false });
+    renderVacationPlans();
+  }
+
+  function removeVacPlan(idx) {
+    vacationPlans.splice(idx, 1);
+    renderVacationPlans();
   }
 
   function updateGoalHint() {
     const hint = document.getElementById('setup-goal-hint');
     if (!hint) return;
-    const profile = Store.profile.get();
-    const gross = profile.salary || 0;
-    if (!gross) { hint.textContent = ''; return; }
     const goal = Number(document.getElementById('setup-savings-goal')?.value) || 0;
     const years = Number(document.getElementById('setup-target-years')?.value) || 0;
-    if (goal && years) {
-      const months = years * 12;
-      const needed = goal / months;
+    const gross = getCurrentGross();
+    if (goal && years && gross) {
+      const needed = goal / (years * 12);
       const pct = ((needed / gross) * 100).toFixed(0);
-      hint.textContent = `To reach ${Fmt.currency(goal)} in ${years} years you need to save ~${Fmt.currency(needed)}/mo (${pct}% of gross).`;
-    } else {
-      hint.textContent = '';
+      hint.style.display = 'block';
+      hint.textContent = 'Para chegar a ' + Fmt.currency(goal) + ' em ' + years + ' anos, voce precisa guardar ' + Fmt.currency(needed) + '/mes (' + pct + '% do bruto).';
+    } else { hint.style.display = 'none'; }
+  }
+
+  function showStep(step) {
+    currentStep = step;
+    for (let i = 1; i <= TOTAL_STEPS; i++) {
+      const el = document.getElementById('setup-step-' + i);
+      if (el) el.classList.toggle('hidden', i !== step);
+      const dot = document.querySelector('.setup-step-dot[data-step="' + i + '"]');
+      if (dot) {
+        dot.classList.toggle('active', i <= step);
+        dot.classList.toggle('done', i < step);
+      }
     }
+    const labelEl = document.getElementById('setup-step-label');
+    if (labelEl) labelEl.textContent = 'Step ' + step + ' of ' + TOTAL_STEPS + ' — ' + STEP_LABELS[step-1];
+    const subtitle = document.getElementById('setup-intro-subtitle');
+    const importSec = document.getElementById('setup-import-section');
+    if (subtitle) subtitle.classList.toggle('hidden', step > 1);
+    if (importSec) importSec.classList.toggle('hidden', step > 1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (step === 2) { updateSalaryPreview(); buildIncomeChart(); }
+    if (step === 3) updateGoalHint();
+    if (step === 5) renderCards();
+    if (step === 7) { renderCategories(); updateCashFlowPreview(); }
   }
 
   function next(fromStep) {
     if (fromStep === 1) {
       const name = document.getElementById('setup-name').value.trim();
       const employerName = document.getElementById('setup-employer').value.trim();
-      const salary = Number(document.getElementById('setup-salary').value) || 0;
       const workStartDate = document.getElementById('setup-work-start').value || '';
-      Store.profile.set({ name: name || 'Matthew', employerName, salary: salary || 7500, workStartDate });
+      const typeBtn = document.querySelector('#setup-salary-type-ctrl .seg-btn.active');
+      const salaryType = typeBtn?.dataset.val || 'mensalista';
+      const gross = getCurrentGross();
+      const hourlyRate = parseFloat(document.getElementById('setup-hourly-rate')?.value) || 0;
+      const hoursPerWeek = parseFloat(document.getElementById('setup-hours-week')?.value) || 44;
+      Store.profile.set({ name: name || 'Matthew', employerName, salary: gross || 7500, salaryType, hourlyRate, hoursPerWeek, workStartDate });
     }
-    if (fromStep === 2) {
-      // Save income schedule + employment & salary details
-      Store.profile.set({
-        adiantamentoAmount:    Number(document.getElementById('setup-adiantamento').value) || 0,
-        adiantamentoDay:       Number(document.getElementById('setup-adiantamento-day').value) || 15,
-        salaryDay:             Number(document.getElementById('setup-salary-day').value) || 30,
-        vacationDaysTotal:     Number(document.getElementById('setup-vacation-days').value) || 30,
-        vacationPeriods:       Number(document.getElementById('setup-vacation-periods').value) || 3,
-        vacationDaysToSell:    Number(document.getElementById('setup-vacation-sell').value) || 0,
-        deductHealthPlan:      Number(document.getElementById('setup-deduct-health').value) || 0,
-        deductDental:          Number(document.getElementById('setup-deduct-dental').value) || 0,
-        deductValeTransporte:  Number(document.getElementById('setup-deduct-vt').value) || 0,
-        deductOther:           Number(document.getElementById('setup-deduct-other').value) || 0,
-        benefitVA:             Number(document.getElementById('setup-benefit-va').value) || 0,
-        benefitVR:             Number(document.getElementById('setup-benefit-vr').value) || 0,
-        benefitOther:          Number(document.getElementById('setup-benefit-other').value) || 0
-      });
-    }
+    if (fromStep === 2) saveStep2();
     if (fromStep === 3) {
-      // Save goals & assets
       Store.profile.set({
         savingsGoal: Number(document.getElementById('setup-savings-goal').value) || 500000,
         targetYears: Number(document.getElementById('setup-target-years').value) || 15,
-        fgts:        Number(document.getElementById('setup-fgts').value) || 0,
-        carValue:    Number(document.getElementById('setup-car-value').value) || 0
+        fgts: Number(document.getElementById('setup-fgts').value) || 0,
+        carValue: Number(document.getElementById('setup-car-value').value) || 0
       });
       const pat = Store.data.getPatrimonio();
-      Store.data.setPatrimonio({
-        ...pat,
-        savings:     Number(document.getElementById('setup-savings').value) || 0,
+      Store.data.setPatrimonio({ ...pat,
+        savings: Number(document.getElementById('setup-savings').value) || 0,
         investments: Number(document.getElementById('setup-investments').value) || 0,
-        fgts:        Number(document.getElementById('setup-fgts').value) || 0,
-        carValue:    Number(document.getElementById('setup-car-value').value) || 0
+        fgts: Number(document.getElementById('setup-fgts').value) || 0,
+        carValue: Number(document.getElementById('setup-car-value').value) || 0
       });
     }
-    if (fromStep === 4) {
-      saveAccountsFromDOM();
-    }
-    if (fromStep === 5) {
-      saveCardsFromDOM();
-      saveSetupFaturas();
-    }
+    if (fromStep === 4) saveAccountsFromDOM();
+    if (fromStep === 5) { saveCardsFromDOM(); saveSetupFaturas(); }
+    if (fromStep === 6) saveLoansFromDOM();
+    if (fromStep === 7) saveCategoriesFromDOM();
     showStep(fromStep + 1);
   }
 
   function back(fromStep) {
-    if (fromStep === 6) saveCategoriesFromDOM();
+    if (fromStep === 7) saveCategoriesFromDOM();
+    if (fromStep === 6) saveLoansFromDOM();
     if (fromStep === 5) { saveCardsFromDOM(); saveSetupFaturas(); }
     if (fromStep === 4) saveAccountsFromDOM();
+    if (fromStep === 2) saveStep2();
     showStep(fromStep - 1);
   }
 
-  // ── Accounts management ────────────────────────────────────
+  function saveStep2() {
+    const freqBtn = document.querySelector('#setup-freq-ctrl .seg-btn.active');
+    const freq = freqBtn?.dataset.val || 'quinzenal';
+    const gross = getCurrentGross();
+    const legacyFields = buildLegacyDeductFields();
+    const firstPay = paymentSchedule[0];
+    const adi = firstPay
+      ? (firstPay.isFixed ? firstPay.amount : (API.calcSalaryBreakdown({ ...Store.profile.get(), salary: gross, ...legacyFields }).netSalary * (firstPay.percent / 100)))
+      : 0;
+    Store.profile.set({
+      paymentFrequency: freq,
+      paymentSchedule,
+      deductionsList,
+      benefitsList,
+      vacationPlans,
+      vacationDaysTotal: Number(document.getElementById('setup-vacation-days').value) || 30,
+      vacationPeriods: Number(document.getElementById('setup-vacation-periods').value) || 3,
+      decimo13Month1: Number(document.getElementById('setup-13-month1')?.value) || 11,
+      adiantamentoAmount: adi,
+      adiantamentoDay: paymentSchedule[0]?.day || 15,
+      salaryDay: paymentSchedule[paymentSchedule.length - 1]?.day || 30,
+      ...legacyFields
+    });
+  }
+
   function renderAccounts() {
     const el = document.getElementById('setup-accounts-list');
-    el.innerHTML = accounts.map((a, i) => `
-      <div class="setup-account-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
-        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">
-          <input type="text" class="form-input setup-acct-name" value="${a.name || ''}" placeholder="e.g. Nubank" style="flex:1;min-width:0" />
-          <select class="form-input setup-acct-type" style="width:110px;flex-shrink:0">
-            <option value="checking" ${a.type === 'checking' ? 'selected' : ''}>Checking</option>
-            <option value="savings" ${a.type === 'savings' ? 'selected' : ''}>Savings</option>
-            <option value="investment" ${a.type === 'investment' ? 'selected' : ''}>Investment</option>
-          </select>
-        </div>
-        <div style="display:flex;gap:var(--space-sm);align-items:center">
-          <input type="text" class="form-input setup-acct-bank" value="${a.bank || ''}" placeholder="Bank" style="flex:1;min-width:0" />
-          <div style="position:relative;width:120px;flex-shrink:0">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px">R$</span>
-            <input type="number" class="form-input setup-acct-balance" value="${a.balance || ''}" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:32px" />
-          </div>
-          ${accounts.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeAccount(${i})" style="color:var(--red);padding:6px 10px;flex-shrink:0" aria-label="Remove">✕</button>` : ''}
-        </div>
-        <div style="margin-top:var(--space-sm);display:flex;align-items:center;gap:var(--space-sm)">
-          <input type="checkbox" class="setup-acct-primary" id="acct-primary-${i}" ${a.isPrimary ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--primary);cursor:pointer" />
-          <label for="acct-primary-${i}" style="font-size:12px;color:var(--text-secondary);cursor:pointer">Primary account (salary lands here)</label>
-        </div>
-      </div>
-    `).join('');
+    if (!el) return;
+    el.innerHTML = accounts.map((a, i) =>
+      '<div class="setup-account-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">' +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">' +
+          '<input type="text" class="form-input setup-acct-name" value="' + App.esc(a.name||'') + '" placeholder="e.g. Nubank" style="flex:1;min-width:0;font-size:13px" />' +
+          '<select class="form-input setup-acct-type" style="width:110px;flex-shrink:0;font-size:13px">' +
+            '<option value="checking"' + (a.type==='checking'?' selected':'') + '>Corrente</option>' +
+            '<option value="savings"' + (a.type==='savings'?' selected':'') + '>Poupanca</option>' +
+            '<option value="investment"' + (a.type==='investment'?' selected':'') + '>Investimento</option>' +
+          '</select>' +
+        '</div>' +
+        '<div style="display:flex;gap:var(--space-sm);align-items:center">' +
+          '<input type="text" class="form-input setup-acct-bank" value="' + App.esc(a.bank||'') + '" placeholder="Banco" style="flex:1;min-width:0;font-size:13px" />' +
+          '<div style="position:relative;width:120px;flex-shrink:0">' +
+            '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px">R$</span>' +
+            '<input type="number" class="form-input setup-acct-balance" value="' + (a.balance||'') + '" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:28px;font-size:13px" />' +
+          '</div>' +
+          (accounts.length > 1 ? '<button onclick="SetupWizard.removeAccount(' + i + ')" style="color:var(--red);background:none;border:none;font-size:20px;cursor:pointer;flex-shrink:0;padding:4px" aria-label="Remove">x</button>' : '') +
+        '</div>' +
+        '<div style="margin-top:var(--space-sm);display:flex;align-items:center;gap:8px">' +
+          '<input type="checkbox" class="setup-acct-primary" id="acct-p-' + i + '" ' + (a.isPrimary?'checked':'') + ' style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer" />' +
+          '<label for="acct-p-' + i + '" style="font-size:12px;color:var(--text-secondary);cursor:pointer">Conta principal (salario cai aqui)</label>' +
+        '</div>' +
+      '</div>'
+    ).join('');
   }
 
   function addAccount() {
     saveAccountsFromDOM();
-    accounts.push({ name: '', bank: '', type: 'checking', balance: 0 });
+    accounts.push({ id: crypto.randomUUID(), name: '', bank: '', type: 'checking', balance: 0, isPrimary: false });
     renderAccounts();
   }
 
@@ -1000,181 +1330,282 @@ const SetupWizard = (() => {
   function saveAccountsFromDOM() {
     const rows = document.querySelectorAll('.setup-account-row');
     accounts = Array.from(rows).map((row, i) => ({
-      ...(accounts[i]?.id ? { id: accounts[i].id } : {}),
+      ...(accounts[i]?.id ? { id: accounts[i].id } : { id: crypto.randomUUID() }),
       name: row.querySelector('.setup-acct-name').value.trim(),
       bank: row.querySelector('.setup-acct-bank').value.trim(),
       type: row.querySelector('.setup-acct-type').value,
       balance: parseFloat(row.querySelector('.setup-acct-balance').value) || 0,
       isPrimary: row.querySelector('.setup-acct-primary')?.checked || false
     }));
+    accounts.filter(a => a.name).forEach(a => API.upsertAccount(a));
   }
 
-  // ── Cards management ──────────────────────────────────────
   function renderCards() {
-    const accounts = Store.data.getAccounts();
+    const savedAccounts = Store.data.getAccounts();
     const el = document.getElementById('setup-cards-list');
-    el.innerHTML = cards.map((c, i) => `
-      <div class="setup-card-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">
-        <!-- Row 1: Name + Brand -->
-        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">
-          <input type="text" class="form-input setup-card-name" value="${c.name || ''}" placeholder="Card name (e.g. Nubank)" style="flex:1;min-width:0" oninput="SetupWizard.renderSetupFaturas()" />
-          <input type="text" class="form-input setup-card-brand" value="${c.brand || ''}" placeholder="Visa/MC/Elo" style="width:90px;flex-shrink:0" />
-        </div>
-        <!-- Row 2: Last4 + Limit + Current balance -->
-        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
-          <input type="text" class="form-input setup-card-last4" value="${c.lastFourDigits || ''}" placeholder="**** 1234" maxlength="4" style="width:80px;flex-shrink:0" inputmode="numeric" />
-          <div style="position:relative;flex:1;min-width:0">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">LIMIT</span>
-            <input type="number" class="form-input setup-card-limit" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" style="padding-left:46px" />
-          </div>
-          <div style="position:relative;flex:1;min-width:0">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">BAL</span>
-            <input type="number" class="form-input setup-card-balance" value="${c.currentBalance || ''}" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:36px" />
-          </div>
-        </div>
-        <!-- Row 3: Closing day + Due day + Interest rate -->
-        <div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">
-          <div style="position:relative;flex:1;min-width:0">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">CLOSES</span>
-            <input type="number" class="form-input setup-card-closing" value="${c.closingDay || ''}" placeholder="15" min="1" max="31" style="padding-left:52px" inputmode="numeric" />
-          </div>
-          <div style="position:relative;flex:1;min-width:0">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">DUE</span>
-            <input type="number" class="form-input setup-card-due" value="${c.dueDay || ''}" placeholder="25" min="1" max="31" style="padding-left:38px" inputmode="numeric" />
-          </div>
-          <div style="position:relative;flex:1;min-width:0">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">RATE%</span>
-            <input type="number" class="form-input setup-card-interest" value="${c.interestRate || ''}" placeholder="14.5" step="0.1" style="padding-left:46px" inputmode="decimal" />
-          </div>
-        </div>
-        <!-- Row 4: Annual fee + Payment account + Remove -->
-        <div style="display:flex;gap:var(--space-sm);align-items:center">
-          <div style="position:relative;flex:1;min-width:0">
-            <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:10px;font-weight:600;white-space:nowrap">ANUIDADE</span>
-            <input type="number" class="form-input setup-card-annual-fee" value="${c.annualFee || ''}" placeholder="0" inputmode="decimal" style="padding-left:68px" />
-          </div>
-          <select class="form-input setup-card-payment-account" style="flex:1;min-width:0">
-            <option value="">Pays from…</option>
-            ${accounts.map(a => `<option value="${a.id}" ${c.paymentAccountId === a.id ? 'selected' : ''}>${App.esc(a.name || a.bank || 'Account')}</option>`).join('')}
-          </select>
-          ${cards.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="SetupWizard.removeCard(${i})" style="color:var(--red);padding:6px 10px;flex-shrink:0" aria-label="Remove">✕</button>` : ''}
-        </div>
-      </div>
-    `).join('');
+    if (!el) return;
+    el.innerHTML = cards.map((c, i) => {
+      const used = Math.max(0, (c.limit || 0) - (c.availableCredit || 0));
+      const usedColor = used > 0 ? 'var(--red)' : 'var(--green)';
+      const acctOptions = savedAccounts.map(a =>
+        '<option value="' + a.id + '"' + (c.paymentAccountId===a.id?' selected':'') + '>' + App.esc(a.name||a.bank||'Account') + '</option>'
+      ).join('');
+      return '<div class="setup-card-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-md)">' +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">' +
+          '<input type="text" class="form-input setup-card-name" value="' + App.esc(c.name||'') + '" placeholder="e.g. Nubank Ultravioleta" style="flex:1;min-width:0;font-size:13px" oninput="SetupWizard.onCardNameChange(' + i + ')" />' +
+          '<input type="text" class="form-input setup-card-brand" value="' + App.esc(c.brand||'') + '" placeholder="Visa/Mastercard/Elo" style="width:80px;flex-shrink:0;font-size:12px" />' +
+        '</div>' +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">' +
+          '<input type="text" class="form-input setup-card-last4" value="' + App.esc(c.lastFourDigits||'') + '" placeholder="*1234" maxlength="4" style="width:64px;flex-shrink:0;font-size:13px;text-align:center" inputmode="numeric" />' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">LIMITE</div><input type="number" class="form-input setup-card-limit" value="' + (c.limit||'') + '" placeholder="5000" inputmode="decimal" style="font-size:13px" oninput="SetupWizard.updateCardBalance(' + i + ')" /></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">DISPONIVEL</div><input type="number" class="form-input setup-card-available" value="' + (c.availableCredit||'') + '" placeholder="0" inputmode="decimal" style="font-size:13px" oninput="SetupWizard.updateCardBalance(' + i + ')" /></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">USADO</div><div class="form-input" id="card-used-' + i + '" style="font-size:13px;font-weight:700;color:' + usedColor + ';background:var(--bg-secondary);display:flex;align-items:center">' + (used > 0 ? Fmt.currency(used) : '—') + '</div></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">FECHA DIA</div><input type="number" class="form-input setup-card-closing" value="' + (c.closingDay||'') + '" placeholder="15" min="1" max="31" style="font-size:13px;text-align:center" inputmode="numeric" /></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">VENCE DIA</div><input type="number" class="form-input setup-card-due" value="' + (c.dueDay||'') + '" placeholder="25" min="1" max="31" style="font-size:13px;text-align:center" inputmode="numeric" /></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">JUROS %/mes</div><input type="number" class="form-input setup-card-interest" value="' + (c.interestRate||'') + '" placeholder="14.5" step="0.1" style="font-size:13px" inputmode="decimal" /></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:var(--space-sm);align-items:flex-end;margin-bottom:var(--space-md)">' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">ANUIDADE/ANO</div><input type="number" class="form-input setup-card-annual-fee" value="' + (c.annualFee||'') + '" placeholder="0" inputmode="decimal" style="font-size:13px" /></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">PAGA COM</div><select class="form-input setup-card-payment-account" style="font-size:13px"><option value="">Escolher conta...</option>' + acctOptions + '</select></div>' +
+          (cards.length > 1 ? '<button onclick="SetupWizard.removeCard(' + i + ')" style="color:var(--red);background:none;border:none;font-size:20px;cursor:pointer;flex-shrink:0;padding:4px 6px;margin-bottom:2px" aria-label="Remove">x</button>' : '') +
+        '</div>' +
+        '<div style="border-top:1px solid var(--border);padding-top:var(--space-sm)">' +
+          '<div style="display:flex;gap:var(--space-sm);align-items:center;margin-bottom:var(--space-sm)">' +
+            '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">ULTIMO MES COM FATURA</div><input type="month" class="form-input setup-card-last-fatura" value="' + (c.lastFaturaMonth||'') + '" style="font-size:13px" onchange="SetupWizard.renderCardFaturas(' + i + ')" /></div>' +
+            '<div style="flex-shrink:0;font-size:12px;color:var(--text-muted);padding-top:16px">← abre a grade de faturas</div>' +
+          '</div>' +
+          '<div id="card-fatura-grid-' + i + '"></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+    cards.forEach((_, i) => renderCardFaturas(i));
+  }
+
+  function onCardNameChange(idx) {
+    const rows = document.querySelectorAll('.setup-card-row');
+    if (rows[idx] && cards[idx]) cards[idx].name = rows[idx].querySelector('.setup-card-name')?.value.trim() || '';
+  }
+
+  function updateCardBalance(idx) {
+    const rows = document.querySelectorAll('.setup-card-row');
+    if (!rows[idx]) return;
+    const limit = parseFloat(rows[idx].querySelector('.setup-card-limit')?.value) || 0;
+    const available = parseFloat(rows[idx].querySelector('.setup-card-available')?.value) || 0;
+    const used = Math.max(0, limit - available);
+    const displayEl = document.getElementById('card-used-' + idx);
+    if (displayEl) {
+      displayEl.textContent = used > 0 ? Fmt.currency(used) : '—';
+      displayEl.style.color = used > 0 ? 'var(--red)' : 'var(--green)';
+    }
+    renderCardFaturas(idx);
+  }
+
+  function renderCardFaturas(idx) {
+    const grid = document.getElementById('card-fatura-grid-' + idx);
+    if (!grid) return;
+    const rows = document.querySelectorAll('.setup-card-row');
+    const row = rows[idx];
+    if (!row) return;
+    const limit = parseFloat(row.querySelector('.setup-card-limit')?.value) || 0;
+    const available = parseFloat(row.querySelector('.setup-card-available')?.value) || 0;
+    const used = Math.max(0, limit - available);
+    const lastFaturaMonth = row.querySelector('.setup-card-last-fatura')?.value || '';
+    const cardId = cards[idx]?.id;
+
+    if (!lastFaturaMonth || !cardId) {
+      grid.innerHTML = !lastFaturaMonth
+        ? '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">Informe o ultimo mes com fatura para ver a grade de valores.</div>'
+        : '';
+      return;
+    }
+
+    const now = new Date();
+    const last = new Date(lastFaturaMonth + '-02');
+    const allFaturas = Store.data.getFaturas();
+    const months = [];
+    let d = new Date(now.getFullYear(), now.getMonth(), 1);
+    while (d <= last && months.length < 24) {
+      months.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+      d.setMonth(d.getMonth() + 1);
+    }
+    if (months.length === 0) months.push(lastFaturaMonth);
+
+    let totalFaturas = 0;
+    const cells = months.map(mo => {
+      const existing = allFaturas.find(f => f.cardId === cardId && f.month === mo);
+      const val = existing?.amount || 0;
+      if (val) totalFaturas += val;
+      return '<div>' +
+        '<div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase">' + Fmt.monthYear(mo+'-01').split(' ')[0] + '</div>' +
+        '<input type="number" class="form-input setup-fatura-input" data-card-id="' + cardId + '" data-card-idx="' + idx + '" data-month="' + mo + '" value="' + (val||'') + '" placeholder="0" inputmode="decimal" step="0.01" style="height:38px;font-size:13px;padding:6px 8px;text-align:right" oninput="SetupWizard.updateFaturaSum(' + idx + ')" />' +
+      '</div>';
+    }).join('');
+
+    const diff = used - totalFaturas;
+    const matchOk = used === 0 || Math.abs(diff) < 1;
+    const sumColor = matchOk ? 'var(--green)' : (diff > 0 ? '#fbbf24' : 'var(--red)');
+    const sumMsg = used === 0 ? '' : matchOk ? 'Bate com o saldo usado' : diff > 0 ? 'Falta ' + Fmt.currency(diff) : 'Excede em ' + Fmt.currency(Math.abs(diff));
+
+    grid.innerHTML = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">' + cells + '</div>' +
+      (used > 0 ? '<div id="fatura-sum-' + idx + '" style="font-size:12px;color:' + sumColor + ';padding:4px 0;font-weight:500">Faturas: ' + Fmt.currency(totalFaturas) + ' / Usado: ' + Fmt.currency(used) + (sumMsg ? ' — ' + sumMsg : '') + '</div>' : '');
+  }
+
+  function updateFaturaSum(idx) {
+    const grid = document.getElementById('card-fatura-grid-' + idx);
+    if (!grid) return;
+    const inputs = grid.querySelectorAll('.setup-fatura-input');
+    let total = 0;
+    inputs.forEach(input => {
+      total += parseFloat(input.value) || 0;
+      const cardId = input.dataset.cardId;
+      const month = input.dataset.month;
+      if (cardId && month) API.setFatura(cardId, month, input.value === '' ? null : input.value);
+    });
+    const rows = document.querySelectorAll('.setup-card-row');
+    const row = rows[idx];
+    const limit = parseFloat(row?.querySelector('.setup-card-limit')?.value) || 0;
+    const available = parseFloat(row?.querySelector('.setup-card-available')?.value) || 0;
+    const used = Math.max(0, limit - available);
+    const sumEl = document.getElementById('fatura-sum-' + idx);
+    if (sumEl && used > 0) {
+      const diff = used - total;
+      const matchOk = Math.abs(diff) < 1;
+      sumEl.style.color = matchOk ? 'var(--green)' : (diff > 0 ? '#fbbf24' : 'var(--red)');
+      sumEl.textContent = 'Faturas: ' + Fmt.currency(total) + ' / Usado: ' + Fmt.currency(used) + ' — ' + (matchOk ? 'Bate com o saldo usado' : diff > 0 ? 'Falta ' + Fmt.currency(diff) : 'Excede em ' + Fmt.currency(Math.abs(diff)));
+    }
   }
 
   function addCard() {
     saveCardsFromDOM();
-    // Generate ID immediately so faturas can reference this card before finish()
-    cards.push({ id: crypto.randomUUID(), name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
+    cards.push({ id: crypto.randomUUID(), name: '', brand: '', lastFourDigits: '', limit: 0, availableCredit: 0, currentBalance: 0, closingDay: '', dueDay: '', lastFaturaMonth: '', interestRate: '', annualFee: 0, paymentAccountId: '' });
     renderCards();
-    renderSetupFaturas();
   }
 
   function removeCard(idx) {
     saveCardsFromDOM();
     cards.splice(idx, 1);
     renderCards();
-    renderSetupFaturas();
   }
 
   function saveCardsFromDOM() {
     const rows = document.querySelectorAll('.setup-card-row');
-    cards = Array.from(rows).map((row, i) => ({
-      // Always preserve the ID (generated in addCard or from existing data)
-      ...(cards[i]?.id ? { id: cards[i].id } : { id: crypto.randomUUID() }),
-      name:             row.querySelector('.setup-card-name').value.trim(),
-      brand:            row.querySelector('.setup-card-brand').value.trim(),
-      lastFourDigits:   row.querySelector('.setup-card-last4').value.trim(),
-      limit:            parseFloat(row.querySelector('.setup-card-limit').value) || 0,
-      currentBalance:   parseFloat(row.querySelector('.setup-card-balance').value) || 0,
-      closingDay:       parseInt(row.querySelector('.setup-card-closing').value) || '',
-      dueDay:           parseInt(row.querySelector('.setup-card-due').value) || '',
-      interestRate:     parseFloat(row.querySelector('.setup-card-interest').value) || '',
-      annualFee:        parseFloat(row.querySelector('.setup-card-annual-fee').value) || 0,
-      paymentAccountId: row.querySelector('.setup-card-payment-account').value || ''
-    }));
-    renderSetupFaturas();
-  }
-
-  // ── Setup fatura entry ────────────────────────────────────
-
-  function renderSetupFaturas() {
-    const section = document.getElementById('setup-faturas-section');
-    const tableEl = document.getElementById('setup-faturas-table');
-    if (!section || !tableEl) return;
-
-    const namedCards = cards.filter(c => c.name);
-    if (namedCards.length === 0) {
-      section.classList.add('hidden');
-      return;
-    }
-    section.classList.remove('hidden');
-
-    const now = new Date();
-    const months = [];
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    }
-
-    const allFaturas = Store.data.getFaturas();
-
-    tableEl.innerHTML = namedCards.map(card => {
-      const cardFaturas = allFaturas.filter(f => f.cardId === card.id);
-      return `
-        <div style="margin-bottom:var(--space-md);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md)">
-          <div style="font-weight:600;font-size:13px;margin-bottom:var(--space-sm)">
-            💳 ${App.esc(card.name)}${card.lastFourDigits ? ' *' + App.esc(card.lastFourDigits) : ''}
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-sm)">
-            ${months.map(mo => {
-              const existing = cardFaturas.find(f => f.month === mo);
-              return `
-                <div>
-                  <div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:0.04em">${Fmt.monthYear(mo + '-01')}</div>
-                  <input type="number" class="form-input setup-fatura-input"
-                    data-card-id="${card.id}" data-month="${mo}"
-                    value="${existing ? existing.amount : ''}"
-                    placeholder="0"
-                    style="height:36px;font-size:13px;padding:6px 10px;text-align:right"
-                    inputmode="decimal" step="0.01" />
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  function saveSetupFaturas() {
-    const inputs = document.querySelectorAll('.setup-fatura-input');
-    inputs.forEach(input => {
-      const cardId = input.dataset.cardId;
-      const month  = input.dataset.month;
-      const val    = input.value;
-      if (cardId && month) {
-        API.setFatura(cardId, month, val === '' ? null : val);
-      }
+    cards = Array.from(rows).map((row, i) => {
+      const limit = parseFloat(row.querySelector('.setup-card-limit')?.value) || 0;
+      const availableCredit = parseFloat(row.querySelector('.setup-card-available')?.value) || 0;
+      const currentBalance = Math.max(0, limit - availableCredit);
+      return {
+        ...(cards[i]?.id ? { id: cards[i].id } : { id: crypto.randomUUID() }),
+        name: row.querySelector('.setup-card-name')?.value.trim() || '',
+        brand: row.querySelector('.setup-card-brand')?.value.trim() || '',
+        lastFourDigits: row.querySelector('.setup-card-last4')?.value.trim() || '',
+        limit, availableCredit, currentBalance,
+        lastFaturaMonth: row.querySelector('.setup-card-last-fatura')?.value || '',
+        closingDay: parseInt(row.querySelector('.setup-card-closing')?.value) || '',
+        dueDay: parseInt(row.querySelector('.setup-card-due')?.value) || '',
+        interestRate: parseFloat(row.querySelector('.setup-card-interest')?.value) || '',
+        annualFee: parseFloat(row.querySelector('.setup-card-annual-fee')?.value) || 0,
+        paymentAccountId: row.querySelector('.setup-card-payment-account')?.value || ''
+      };
     });
   }
 
-  // ── Categories / Budgets management ────────────────────────
+  function saveSetupFaturas() {
+    document.querySelectorAll('.setup-fatura-input').forEach(input => {
+      const cardId = input.dataset.cardId;
+      const month = input.dataset.month;
+      if (cardId && month) API.setFatura(cardId, month, input.value === '' ? null : input.value);
+    });
+  }
+
+  function renderLoans() {
+    const el = document.getElementById('setup-loans-list');
+    if (!el) return;
+    if (loans.length === 0) {
+      el.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:13px;padding:var(--space-lg) 0;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-md)">Nenhum emprestimo cadastrado.</div>';
+      return;
+    }
+    el.innerHTML = loans.map((l, i) => {
+      const total = (l.monthlyPayment || 0) * (l.remainingMonths || 0);
+      return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">' +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">' +
+          '<input type="text" class="form-input setup-loan-name" value="' + App.esc(l.name||'') + '" placeholder="Ex: Emprestimo pessoal, financiamento" style="flex:1;min-width:0;font-size:13px" />' +
+          '<button onclick="SetupWizard.removeLoan(' + i + ')" style="color:var(--red);background:none;border:none;font-size:20px;cursor:pointer;flex-shrink:0;padding:4px">x</button>' +
+        '</div>' +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">PARCELA MENSAL</div><input type="number" class="form-input setup-loan-payment" value="' + (l.monthlyPayment||'') + '" placeholder="500" inputmode="decimal" style="font-size:13px" /></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">PARCELAS RESTANTES</div><input type="number" class="form-input setup-loan-months" value="' + (l.remainingMonths||'') + '" placeholder="24" min="1" inputmode="numeric" style="font-size:13px" /></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:var(--space-sm)">' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">DIA PAGAMENTO</div><input type="number" class="form-input setup-loan-day" value="' + (l.paymentDay||'') + '" placeholder="10" min="1" max="31" inputmode="numeric" style="font-size:13px;text-align:center" /></div>' +
+          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">MES DE INICIO</div><input type="month" class="form-input setup-loan-start" value="' + (l.startMonth||'') + '" style="font-size:13px" /></div>' +
+        '</div>' +
+        (total > 0 ? '<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Total restante estimado: <strong style="color:var(--text-primary)">' + Fmt.currency(total) + '</strong></div>' : '') +
+      '</div>';
+    }).join('');
+  }
+
+  function addLoan() {
+    saveLoansFromDOM();
+    loans.push({ id: crypto.randomUUID(), name: '', monthlyPayment: 0, remainingMonths: 0, paymentDay: 10, startMonth: '' });
+    renderLoans();
+  }
+
+  function removeLoan(idx) {
+    saveLoansFromDOM();
+    loans.splice(idx, 1);
+    renderLoans();
+  }
+
+  function saveLoansFromDOM() {
+    const rows = document.querySelectorAll('#setup-loans-list > div[style]');
+    if (!rows.length) { loans = []; return; }
+    loans = Array.from(rows).map((row, i) => ({
+      ...(loans[i]?.id ? { id: loans[i].id } : { id: crypto.randomUUID() }),
+      name: row.querySelector('.setup-loan-name')?.value.trim() || '',
+      monthlyPayment: parseFloat(row.querySelector('.setup-loan-payment')?.value) || 0,
+      remainingMonths: parseInt(row.querySelector('.setup-loan-months')?.value) || 0,
+      paymentDay: parseInt(row.querySelector('.setup-loan-day')?.value) || 10,
+      startMonth: row.querySelector('.setup-loan-start')?.value || ''
+    })).filter(l => l.name || l.monthlyPayment > 0);
+  }
+
   function renderCategories() {
     const el = document.getElementById('setup-categories-list');
     if (!el) return;
     const categories = Store.data.getCategories();
-    el.innerHTML = categories.map(c => `
-      <div class="setup-cat-row" data-id="${c.id}" style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:var(--space-sm);padding:var(--space-sm);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md)">
-        <span style="font-size:18px;width:28px;text-align:center">${c.emoji}</span>
-        <span style="flex:1;font-size:13px;font-weight:500">${c.label}</span>
-        <div style="position:relative;width:120px">
-          <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px">R$</span>
-          <input type="number" class="form-input setup-cat-budget" value="${c.budget || ''}" placeholder="0" inputmode="decimal" style="padding-left:28px;font-size:13px;height:36px" />
-        </div>
-      </div>
-    `).join('');
+    el.innerHTML = categories.map(c =>
+      '<div class="setup-cat-row" data-id="' + c.id + '" style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:8px;padding:10px var(--space-md);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md)">' +
+        '<span style="font-size:20px;width:28px;text-align:center;flex-shrink:0">' + c.emoji + '</span>' +
+        '<span style="flex:1;font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + App.esc(c.label) + '</span>' +
+        '<div style="position:relative;width:110px;flex-shrink:0">' +
+          '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none">R$</span>' +
+          '<input type="number" class="form-input setup-cat-budget" value="' + (c.budget||'') + '" placeholder="0" inputmode="decimal" style="padding-left:24px;font-size:13px;height:36px" oninput="SetupWizard.updateCashFlowPreview()" />' +
+        '</div>' +
+        (c.custom ? '<button onclick="SetupWizard.removeCustomCategory(\'' + c.id + '\')" style="color:var(--red);background:none;border:none;font-size:16px;cursor:pointer;flex-shrink:0;padding:4px">x</button>' : '<div style="width:20px;flex-shrink:0"></div>') +
+      '</div>'
+    ).join('');
+  }
+
+  function addCustomCategory() {
+    const emojiEl = document.getElementById('setup-new-cat-emoji');
+    const labelEl = document.getElementById('setup-new-cat-label');
+    const emoji = emojiEl?.value.trim() || '\uD83C\uDFF7';
+    const label = labelEl?.value.trim();
+    if (!label) { App.toast('Enter a category name', 'error'); return; }
+    const cats = Store.data.getCategories();
+    const COLORS = ['#6366f1','#f97316','#ec4899','#8b5cf6','#14b8a6','#f59e0b','#10b981','#3b82f6','#ef4444','#84cc16'];
+    cats.push({ id: 'custom_' + Date.now(), emoji, label, color: COLORS[cats.length % COLORS.length], budget: 0, active: true, custom: true });
+    Store.data.setCategories(cats);
+    if (emojiEl) emojiEl.value = '';
+    if (labelEl) labelEl.value = '';
+    renderCategories();
+  }
+
+  function removeCustomCategory(id) {
+    Store.data.setCategories(Store.data.getCategories().filter(c => c.id !== id));
+    renderCategories();
   }
 
   function saveCategoriesFromDOM() {
@@ -1190,17 +1621,47 @@ const SetupWizard = (() => {
     Store.data.setCategories(categories);
   }
 
-  // ── Finish ─────────────────────────────────────────────────
+  function updateCashFlowPreview() {
+    const el = document.getElementById('setup-cashflow-preview');
+    if (!el) return;
+    const profile = Store.profile.get();
+    const gross = profile.salary || 0;
+    if (!gross) { el.innerHTML = ''; return; }
+    const b = API.calcSalaryBreakdown(profile);
+    const monthlyIncome = b.totalTakeHome;
+    const allLoans = Store.data.getLoans();
+    const loansTotal = allLoans.reduce((s, l) => s + (l.monthlyPayment || 0), 0);
+    let budgetTotal = 0;
+    document.querySelectorAll('.setup-cat-budget').forEach(inp => { budgetTotal += parseFloat(inp.value) || 0; });
+    const now = new Date();
+    const months = [0,1,2].map(i => {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    });
+    const allFaturas = Store.data.getFaturas();
+    const ccAmounts = months.map(mo => allFaturas.filter(f => f.month === mo && f.amount > 0).reduce((s,f) => s+(f.amount||0), 0));
+    const ccAvg = ccAmounts.reduce((s,v)=>s+v,0) / 3 || 0;
+    const remaining = monthlyIncome - ccAvg - loansTotal - budgetTotal;
+    const over = remaining < 0;
+    el.innerHTML = '<div style="background:' + (over?'rgba(239,68,68,0.1)':'var(--bg-card)') + ';border:1px solid ' + (over?'var(--red)':'var(--border)') + ';border-radius:var(--radius-md);padding:var(--space-md)">' +
+      '<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text-secondary)">Previsao mensal</div>' +
+      '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>Take-home</span><span style="color:var(--green)">' + Fmt.currency(monthlyIncome) + '</span></div>' +
+      (ccAvg > 0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>- Faturas CC (media)</span><span>' + Fmt.currency(ccAvg) + '</span></div>' : '') +
+      (loansTotal > 0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>- Emprestimos</span><span>' + Fmt.currency(loansTotal) + '</span></div>' : '') +
+      (budgetTotal > 0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:2px"><span>- Orcamento categorias</span><span>' + Fmt.currency(budgetTotal) + '</span></div>' : '') +
+      '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span>Sobra</span><span style="color:' + (over?'var(--red)':'var(--green)') + '">' + Fmt.currency(remaining) + (over?' — acima do orcamento!':'') + '</span></div>' +
+    '</div>';
+  }
+
   async function finish() {
     saveCategoriesFromDOM();
+    saveLoansFromDOM();
+    saveCardsFromDOM();
+    saveSetupFaturas();
 
-    // Save valid accounts
     const validAccounts = accounts.filter(a => a.name);
-    for (const a of validAccounts) {
-      await API.upsertAccount(a);
-    }
+    for (const a of validAccounts) await API.upsertAccount(a);
 
-    // Save valid cards and calculate total debt
     const validCards = cards.filter(c => c.name);
     let totalDebt = 0;
     for (const c of validCards) {
@@ -1208,17 +1669,31 @@ const SetupWizard = (() => {
       totalDebt += c.currentBalance || 0;
     }
 
-    // Update profile debt total from cards
-    if (totalDebt > 0) {
-      Store.profile.set({ debtTotal: totalDebt });
-    }
+    const validLoans = loans.filter(l => l.name || l.monthlyPayment > 0);
+    for (const l of validLoans) await API.upsertLoan(l);
 
+    if (totalDebt > 0) Store.profile.set({ debtTotal: totalDebt });
+    Store.cache.invalidateAll();
     Store.data.setSetupDone(true);
     App.showApp();
-    App.toast('Setup complete! Start tracking your finances.', 'success');
+    App.toast('Setup completo! Comece a rastrear suas financas.', 'success');
   }
 
-  return { init, next, back, addAccount, removeAccount, addCard, removeCard, finish, renderSetupFaturas };
+  return {
+    init, next, back,
+    setSalaryType, onHourlyChange, onSalaryChange,
+    setFrequency, savePaymentSchedule, toggleSchedFixed, addPaymentRow, removePaymentRow,
+    addDeduction, removeDeduction, saveDeduction,
+    addBenefit, removeBenefit, saveBenefit,
+    addVacationPlan, removeVacPlan, saveVacPlan,
+    updateGoalHint,
+    addAccount, removeAccount,
+    addCard, removeCard, onCardNameChange, updateCardBalance, renderCardFaturas, updateFaturaSum,
+    addLoan, removeLoan,
+    addCustomCategory, removeCustomCategory, updateCashFlowPreview,
+    finish
+  };
+
 })();
 
 // ── Start ──────────────────────────────────────────────────
