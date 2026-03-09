@@ -60,7 +60,10 @@ const Dashboard = (() => {
       ]);
       summary = s;
       history = h;
-      renderFull(container, s, h, accounts, cards, categories, patrimonio);
+      // Subscriptions and installments are synchronous — no need to parallel fetch
+      const subscriptions = API.getSubscriptions().filter(s => s.active !== false);
+      const installmentItems = API.getMonthlyInstallmentItems(App.state.activeMonth);
+      renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems);
     } catch (e) {
       container.innerHTML = `
         <div class="empty-state">
@@ -241,7 +244,7 @@ const Dashboard = (() => {
   }
 
   // ── Cash flow checkpoints card ─────────────────────────────
-  function renderCashFlowCard(expenses, income, profile, accounts, cards, isCurrentMonth) {
+  function renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth) {
     if (!profile.salary || profile.salary === 0) return '';
 
     const sched = computeIncomeSchedule(profile);
@@ -249,26 +252,21 @@ const Dashboard = (() => {
 
     const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
     const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+    const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
+    const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
 
-    // Simplified cash flow model:
-    // - Start: current bank balance (this month's opening estimate)
-    // - 15th: +advance
-    // - 30th: +salary, -card bill (current card balance as proxy for month bill)
     const now = new Date();
     const dayOfMonth = isCurrentMonth ? now.getDate() : 30;
 
-    // "After 15th" — advance received, expenses tracked so far assumed pre-15th portion
-    // We use a simple heuristic: if today > 15th, advance already received; expenses are actual
     const advanceReceived = !isCurrentMonth || dayOfMonth >= advanceDay;
-    const salaryReceived  = !isCurrentMonth || dayOfMonth >= salaryDay;
 
-    // Balance after advance checkpoint
+    // Balance after advance checkpoint (bank balance ± projected advance/expenses if not yet received)
     const balanceAfter15 = totalBankBalance
-      + (advanceReceived ? 0 : adiantamento)   // if not received yet, show projected
-      - (advanceReceived ? 0 : expenses);       // if received, expenses already hit balance
+      + (advanceReceived ? 0 : adiantamento)
+      - (advanceReceived ? 0 : expenses);
 
-    // Overflow: end of month projection
-    const projectedOverflow = adiantamento + salario30 - expenses - totalCardBalance;
+    // Overflow: end of month projection — income minus all outflows including subscriptions/installments
+    const projectedOverflow = adiantamento + salario30 - expenses - subsTotal - instTotal - totalCardBalance;
     const overflowColor = projectedOverflow >= 0 ? 'var(--green)' : 'var(--red)';
 
     // Step indicator
@@ -332,6 +330,24 @@ const Dashboard = (() => {
               <span style="font-size:11px;color:var(--green);font-family:var(--font-mono)">+${Fmt.compact(salario30)}</span>
             </div>
           </div>
+          ${subsTotal > 0 ? `
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">− Subscriptions</span>
+              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(subsTotal)}</span>
+            </div>
+          </div>
+          ` : ''}
+          ${instTotal > 0 ? `
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">− Installments this month</span>
+              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(instTotal)}</span>
+            </div>
+          </div>
+          ` : ''}
           ${totalCardBalance > 0 ? `
           <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
             <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
@@ -436,7 +452,7 @@ const Dashboard = (() => {
     `;
   }
 
-  function renderFull(container, s, h, accounts, cards, categories, patrimonio) {
+  function renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
@@ -474,7 +490,7 @@ const Dashboard = (() => {
       ${renderLive15Card(expenses, income, profile, isCurrentMonth, h)}
 
       <!-- 2. Cash flow checkpoints -->
-      ${renderCashFlowCard(expenses, income, profile, accounts, cards, isCurrentMonth)}
+      ${renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth)}
 
       <!-- 3. Account balances -->
       ${renderAccountsRow(accounts, cards)}
@@ -482,10 +498,13 @@ const Dashboard = (() => {
       <!-- 4. Net worth teaser -->
       ${renderNetWorthTeaser(patrimonio, accounts, cards)}
 
-      <!-- 5. Budget progress -->
-      ${renderBudgetSection(cats, categories)}
+      <!-- 5. Monthly commitments (subscriptions + installments) -->
+      ${renderMonthlyCommitmentsCard(subscriptions, installmentItems)}
 
-      <!-- 6. Category breakdown -->
+      <!-- 6. Budget progress -->
+      ${renderBudgetSection(cats, categories, subscriptions, installmentItems)}
+
+      <!-- 7. Category breakdown -->
       ${Object.keys(cats).length > 0 ? `
       <div class="card" style="margin-bottom:var(--space-md)">
         <div class="card-header">
@@ -496,7 +515,7 @@ const Dashboard = (() => {
       </div>
       ` : ''}
 
-      <!-- 7. Quick stats -->
+      <!-- 8. Quick stats -->
       <div class="grid-2" style="margin-bottom:var(--space-md)">
         <div class="card" style="cursor:pointer" onclick="App.navigate('transactions')">
           <div class="card-title">Transactions</div>
@@ -562,7 +581,91 @@ const Dashboard = (() => {
     renderTrendChart(h);
   }
 
-  function renderBudgetSection(cats, categories) {
+  // ── Monthly Commitments card ───────────────────────────────
+  // Shows fixed monthly subscriptions + installment items for this month.
+  // These are "committed" costs before any tracked transaction.
+  function renderMonthlyCommitmentsCard(subscriptions, installmentItems) {
+    const hasSubs   = subscriptions && subscriptions.length > 0;
+    const hasInsts  = installmentItems && installmentItems.length > 0;
+    if (!hasSubs && !hasInsts) return '';
+
+    const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
+    const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
+    const totalCommitted = subsTotal + instTotal;
+
+    return `
+      <div class="card" style="margin-bottom:var(--space-md)">
+        <div class="card-header">
+          <span class="card-title">Monthly Commitments</span>
+          <span class="pill pill-blue" style="font-size:10px">${Fmt.compact(totalCommitted)}/mo</span>
+        </div>
+
+        ${hasSubs ? `
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Subscriptions</div>
+          ${(subscriptions || []).map(sub => `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:18px;width:24px;text-align:center;flex-shrink:0">${sub.emoji || '📱'}</span>
+              <span style="flex:1;font-size:13px">${App.esc(sub.name)}</span>
+              ${sub.billingDay ? `<span style="font-size:10px;color:var(--text-muted)">day ${sub.billingDay}</span>` : ''}
+              <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:var(--red)">-${Fmt.compact(sub.amount)}</span>
+              <button onclick="Dashboard.deleteSubscription('${sub.id}')" style="background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:14px;padding:2px 4px;line-height:1">×</button>
+            </div>
+          `).join('')}
+          <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px;margin-bottom:${hasInsts ? 'var(--space-md)' : '0'}">
+            <span style="color:var(--text-secondary)">Subscriptions total</span>
+            <span style="color:var(--red);font-family:var(--font-mono)">${Fmt.compact(subsTotal)}</span>
+          </div>
+        ` : ''}
+
+        ${hasInsts ? `
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Installments this month</div>
+          ${(installmentItems || []).map(item => `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:11px;color:var(--text-muted);background:var(--bg-input);border-radius:4px;padding:1px 5px;flex-shrink:0">${item.installment}</span>
+              <span style="flex:1;font-size:13px">${App.esc(item.description)}</span>
+              <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:var(--red)">-${Fmt.compact(item.amount)}</span>
+            </div>
+          `).join('')}
+          <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px">
+            <span style="color:var(--text-secondary)">Installments total</span>
+            <span style="color:var(--red);font-family:var(--font-mono)">${Fmt.compact(instTotal)}</span>
+          </div>
+        ` : ''}
+
+        <!-- Add subscription inline form -->
+        <div id="add-sub-form" style="display:none;margin-top:var(--space-md);padding-top:var(--space-md);border-top:1px solid var(--border)">
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <input id="sub-emoji" class="form-input" placeholder="📱" style="width:46px;text-align:center;font-size:16px;padding:4px" maxlength="2" />
+            <input id="sub-name" class="form-input" placeholder="Netflix" style="flex:1;min-width:80px" />
+            <input id="sub-amount" class="form-input" type="number" placeholder="R$ 0" inputmode="decimal" style="width:80px" />
+            <input id="sub-day" class="form-input" type="number" placeholder="Dia" min="1" max="31" inputmode="numeric" style="width:54px" />
+            <button class="btn btn-primary btn-sm" onclick="Dashboard.saveNewSubscription()" style="flex-shrink:0">Add</button>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('add-sub-form').style.display='none'" style="flex-shrink:0">Cancel</button>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:var(--space-sm);width:100%" onclick="document.getElementById('add-sub-form').style.display='block'">+ Add subscription</button>
+      </div>
+    `;
+  }
+
+  // Called from inline button — saves a new subscription and re-renders
+  async function saveNewSubscription() {
+    const emoji  = document.getElementById('sub-emoji')?.value.trim()  || '📱';
+    const name   = document.getElementById('sub-name')?.value.trim();
+    const amount = parseFloat(document.getElementById('sub-amount')?.value) || 0;
+    const day    = parseInt(document.getElementById('sub-day')?.value)   || 1;
+    if (!name || amount <= 0) { App.toast('Enter name and amount', 'error'); return; }
+    await API.upsertSubscription({ name, amount, emoji, billingDay: day, active: true });
+    App.toast(`${emoji} ${name} added`, 'success');
+    await render();
+  }
+
+  async function deleteSubscription(id) {
+    await API.deleteSubscription(id);
+    await render();
+  }
+
+  function renderBudgetSection(cats, categories, subscriptions, installmentItems) {
     if (!categories || !categories.length) return '';
     const budgetItems = categories
       .filter(c => c.budget > 0 && c.active !== false)
@@ -577,7 +680,16 @@ const Dashboard = (() => {
 
     const totalBudget = budgetItems.reduce((s, b) => s + b.budget, 0);
     const totalSpent  = budgetItems.reduce((s, b) => s + b.spent, 0);
-    const overallPct  = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
+
+    // Committed costs (subscriptions + installments this month) reduce effective budget headroom
+    const subsTotal  = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
+    const instTotal  = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
+    const committed  = subsTotal + instTotal;
+
+    // "Effective spent" = tracked expenses + known committed costs
+    const effectiveSpent = totalSpent + committed;
+    const overallPct = totalBudget > 0 ? (effectiveSpent / totalBudget * 100) : 0;
+    const trackedPct = totalBudget > 0 ? (totalSpent / totalBudget * 100) : 0;
     const overBudgetCount = budgetItems.filter(b => b.pct > 100).length;
 
     return `
@@ -587,12 +699,29 @@ const Dashboard = (() => {
           <span class="pill ${overallPct > 100 ? 'pill-red' : overallPct > 75 ? 'pill-yellow' : 'pill-green'}">${Fmt.percent(overallPct)} used</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--space-sm)">
-          <span style="font-size:12px;color:var(--text-muted)">${Fmt.currency(totalSpent)} of ${Fmt.currency(totalBudget)}</span>
+          <span style="font-size:12px;color:var(--text-muted)">${Fmt.currency(effectiveSpent)} of ${Fmt.currency(totalBudget)}</span>
           ${overBudgetCount > 0 ? `<span style="font-size:11px;color:var(--red);font-weight:600">${overBudgetCount} over budget</span>` : ''}
         </div>
-        <div class="progress-bar-wrap" style="margin-bottom:var(--space-md)">
-          <div class="progress-bar-fill" style="width:${Math.min(100, overallPct)}%;background:${overallPct > 100 ? 'var(--red)' : overallPct > 75 ? 'var(--yellow)' : 'var(--green)'}"></div>
+
+        <!-- Stacked progress bar: tracked (solid) + committed (hatched/lighter) -->
+        <div class="progress-bar-wrap" style="margin-bottom:${committed > 0 ? 'var(--space-xs)' : 'var(--space-md)'}">
+          <div style="display:flex;height:100%;border-radius:var(--radius-sm);overflow:hidden;width:100%">
+            <div style="width:${Math.min(100, trackedPct)}%;background:${overallPct > 100 ? 'var(--red)' : overallPct > 75 ? 'var(--yellow)' : 'var(--green)'}"></div>
+            ${committed > 0 ? `<div style="width:${Math.min(100 - Math.min(100,trackedPct), totalBudget > 0 ? committed/totalBudget*100 : 0)}%;background:${overallPct > 100 ? 'rgba(239,68,68,0.3)' : 'rgba(234,179,8,0.35)'}"></div>` : ''}
+            <div style="flex:1;background:var(--bg-input)"></div>
+          </div>
         </div>
+        ${committed > 0 ? `
+          <div style="display:flex;gap:12px;margin-bottom:var(--space-md)">
+            <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted)">
+              <div style="width:10px;height:10px;border-radius:2px;background:var(--green);flex-shrink:0"></div>Tracked: ${Fmt.compact(totalSpent)}
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted)">
+              <div style="width:10px;height:10px;border-radius:2px;background:rgba(234,179,8,0.5);flex-shrink:0"></div>Committed: ${Fmt.compact(committed)}
+            </div>
+          </div>
+        ` : ''}
+
         ${budgetItems.map(b => {
           const barColor = b.pct > 100 ? 'var(--red)' : b.pct > 75 ? 'var(--yellow)' : b.color;
           const remaining = Math.max(0, b.budget - b.spent);
@@ -817,5 +946,5 @@ const Dashboard = (() => {
     `;
   }
 
-  return { render };
+  return { render, saveNewSubscription, deleteSubscription };
 })();

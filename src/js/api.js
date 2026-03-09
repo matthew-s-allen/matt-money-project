@@ -753,6 +753,65 @@ Critical extraction rules:
     return { success: true };
   }
 
+  // ── Subscriptions (fixed monthly recurring costs) ─────────
+
+  function getSubscriptions() {
+    return Store.data.getSubscriptions();
+  }
+
+  async function upsertSubscription(sub) {
+    const all = Store.data.getSubscriptions();
+    const idx = all.findIndex(s => s.id === sub.id);
+    const entry = { ...sub, id: sub.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
+    if (idx >= 0) all[idx] = entry; else all.push(entry);
+    Store.data.setSubscriptions(all);
+    Store.cache.invalidateAll();
+    return { data: entry, success: true };
+  }
+
+  async function deleteSubscription(id) {
+    Store.data.setSubscriptions(Store.data.getSubscriptions().filter(s => s.id !== id));
+    Store.cache.invalidateAll();
+    return { success: true };
+  }
+
+  // Returns total installment charges scheduled for a given month (YYYY-MM)
+  function getMonthlyInstallmentTotal(month) {
+    const installments = Store.data.getInstallments();
+    const [y, m] = month.split('-').map(Number);
+    let total = 0;
+    installments.forEach(inst => {
+      if (!inst.startMonth) return;
+      const [sy, sm] = inst.startMonth.split('-').map(Number);
+      const offset = (y - sy) * 12 + (m - sm);
+      if (offset >= 0 && offset < (inst.totalInstallments || 0)) {
+        total += inst.monthlyAmount || 0;
+      }
+    });
+    return total;
+  }
+
+  // Returns all active installment items for a given month
+  function getMonthlyInstallmentItems(month) {
+    const installments = Store.data.getInstallments();
+    const [y, m] = month.split('-').map(Number);
+    const items = [];
+    installments.forEach(inst => {
+      if (!inst.startMonth) return;
+      const [sy, sm] = inst.startMonth.split('-').map(Number);
+      const offset = (y - sy) * 12 + (m - sm);
+      if (offset >= 0 && offset < (inst.totalInstallments || 0)) {
+        items.push({
+          id: inst.id,
+          description: inst.description,
+          amount: inst.monthlyAmount || 0,
+          installment: `${offset + 1}/${inst.totalInstallments}`
+        });
+      }
+    });
+    return items;
+  }
+
   async function initBackend() { return { success: true }; }
 
   return {
@@ -765,6 +824,8 @@ Critical extraction rules:
     getAccounts, upsertAccount, deleteAccount,
     getCreditCards, upsertCreditCard, deleteCreditCard,
     getLoans, upsertLoan, deleteLoan,
+    getSubscriptions, upsertSubscription, deleteSubscription,
+    getMonthlyInstallmentTotal, getMonthlyInstallmentItems,
     parseReceiptWithGemini,
     exportData, importData,
     calcSalaryBreakdown, calcINSS, calcIRRF,
