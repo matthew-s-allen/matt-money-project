@@ -224,7 +224,9 @@ const Store = (() => {
         // Legacy income schedule fields
         adiantamentoAmount: 0,
         adiantamentoDay: 15,
-        salaryDay: 30
+        salaryDay: 30,
+        // Predicted monthly income override (0 = use calcSalaryBreakdown)
+        predictedMonthlyIncome: 0
       });
     },
     set(updates) { raw.set('profile', { ...profile.get(), ...updates }); }
