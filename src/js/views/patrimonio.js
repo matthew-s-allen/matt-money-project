@@ -154,6 +154,16 @@ const Patrimonio = (() => {
             <div class="asset-value positive">${Fmt.currency(investments)}</div>
           </div>` : ''}
 
+          ${bankTotal > 0 ? `
+          <div class="asset-item">
+            <div class="asset-icon blue">🏧</div>
+            <div class="asset-info">
+              <div class="asset-name">Bank Accounts</div>
+              <div class="asset-sub">${(accounts || []).length} account(s)</div>
+            </div>
+            <div class="asset-value positive">${Fmt.currency(bankTotal)}</div>
+          </div>` : ''}
+
           ${savings === 0 && investments === 0 ? `
           <div class="asset-item" style="opacity:0.5">
             <div class="asset-icon" style="background:var(--bg-primary);border:1px dashed var(--border)">📈</div>
@@ -173,7 +183,7 @@ const Patrimonio = (() => {
           <button class="btn btn-ghost btn-sm" onclick="App.navigate('accounts')">Manage</button>
         </div>
         <div class="asset-list" id="debts-list">
-          ${renderDebts(debts, creditCards, totalDebt, profile)}
+          ${renderDebts(debts, creditCards, totalDebt, profile, loans)}
         </div>
       </div>
 
@@ -192,6 +202,7 @@ const Patrimonio = (() => {
               { label: 'Car',        val: carValue,     color: '#00a8e8' },
               { label: 'Savings',    val: savings,      color: '#a855f7' },
               { label: 'Investments',val: investments,  color: '#ffd600' },
+              { label: 'Bank Accounts', val: Math.max(0, bankTotal), color: '#60a5fa' },
               { label: 'Debt',       val: -totalDebt,   color: '#e8002d' }
             ].filter(i => i.val !== 0).map(i => `
               <div class="legend-item">
@@ -243,10 +254,10 @@ const Patrimonio = (() => {
       </div>
     `;
 
-    drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt);
+    drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt, bankTotal);
   }
 
-  function renderDebts(debts, creditCards, totalDebt, profile) {
+  function renderDebts(debts, creditCards, totalDebt, profile, loans) {
     let html = '';
 
     // Show credit cards from the accounts system
@@ -261,6 +272,20 @@ const Patrimonio = (() => {
             <div class="asset-sub">${c.interestRate ? c.interestRate + '% a.m.' : ''}${c.minPayment ? ' · Min: ' + Fmt.currency(c.minPayment) : ''}${c.limit ? ' · Limit: ' + Fmt.compact(c.limit) : ''}</div>
           </div>
           <div class="asset-value negative">${Fmt.currency(c.currentBalance)}</div>
+        </div>
+      `).join('');
+    }
+
+    // Show loans
+    if (loans && loans.length > 0) {
+      html += loans.filter(l => (l.remainingBalance || l.amount || 0) > 0).map(l => `
+        <div class="asset-item">
+          <div class="asset-icon red">🏛️</div>
+          <div class="asset-info">
+            <div class="asset-name">${l.name || 'Loan'}</div>
+            <div class="asset-sub">${l.monthlyPayment ? Fmt.currency(l.monthlyPayment) + '/mo' : ''}${l.interestRate ? ' · ' + l.interestRate + '% a.m.' : ''}</div>
+          </div>
+          <div class="asset-value negative">${Fmt.currency(l.remainingBalance || l.amount || 0)}</div>
         </div>
       `).join('');
     }
@@ -297,7 +322,7 @@ const Patrimonio = (() => {
     return html;
   }
 
-  function drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt) {
+  function drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt, bankTotal) {
     const canvas = document.getElementById('patrimonio-donut');
     if (!canvas) return;
 
@@ -306,6 +331,7 @@ const Patrimonio = (() => {
       { label: 'Car',        val: carValue,     color: '#00a8e8' },
       { label: 'Savings',    val: savings,      color: '#a855f7' },
       { label: 'Investments',val: investments,  color: '#ffd600' },
+      { label: 'Bank Accounts', val: Math.max(0, bankTotal || 0), color: '#60a5fa' },
       { label: 'Debt',       val: totalDebt,    color: '#e8002d' }
     ].filter(i => i.val > 0);
 

@@ -10,6 +10,7 @@ const CashFlow = (() => {
     const profile = Store.profile.get();
     const accounts = Store.data.getAccounts();
     const cards = Store.data.getCreditCards();
+    const loans = Store.data.getLoans();
     const cfData = API.getCashFlowMonth(month);
     const allTx = Store.data.getTransactions().filter(t => t.date?.startsWith(month));
 
@@ -42,13 +43,16 @@ const CashFlow = (() => {
     const faturas = API.getFaturas().filter(f => f.month === month);
     const faturaTotal = faturas.reduce((s, f) => s + f.amount, 0);
 
+    // Loan payments
+    const loanPaymentTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
+
     // Account totals
     const bankTotal = accounts.reduce((s, a) => s + (a.balance || 0), 0);
 
     // Checkpoint calculations
     const totalEarlyExp = earlyPlannedTotal + earlyExpActual;
     const balanceAfterAdiantamento = bankTotal + adiantamento + earlyIncActual - totalEarlyExp;
-    const totalLateExp  = latePlannedTotal + lateExpActual + faturaTotal;
+    const totalLateExp  = latePlannedTotal + lateExpActual + faturaTotal + loanPaymentTotal;
     const endBalance    = balanceAfterAdiantamento + salary + lateIncActual - totalLateExp;
     const totalIncome   = adiantamento + salary + earlyIncActual + lateIncActual;
     const totalExpenses = totalEarlyExp + totalLateExp;
@@ -180,6 +184,17 @@ const CashFlow = (() => {
           `;
         }).join('')}
 
+        ${(loans || []).filter(l => (l.monthlyPayment || 0) > 0).map(l => `
+          <div class="tx-item">
+            <div class="tx-icon" style="width:36px;height:36px;font-size:14px;background:var(--red-glow)">🏛️</div>
+            <div class="tx-info">
+              <div class="tx-name">${App.esc(l.name || 'Loan')} payment</div>
+              <div class="tx-meta">Monthly loan payment</div>
+            </div>
+            <span class="tx-amount expense">-${Fmt.currency(l.monthlyPayment)}</span>
+          </div>
+        `).join('')}
+
         ${latePlanned.map(e => renderPlannedExpense(month, e)).join('')}
 
         ${lateExpActual > 0 ? `
@@ -193,7 +208,7 @@ const CashFlow = (() => {
           </div>
         ` : ''}
 
-        ${latePlanned.length === 0 && lateExpActual === 0 && faturas.length === 0 ? `
+        ${latePlanned.length === 0 && lateExpActual === 0 && faturas.length === 0 && loanPaymentTotal === 0 ? `
           <div style="padding:var(--space-sm) 0;text-align:center;font-size:12px;color:var(--text-muted)">
             No expenses yet. Card faturas appear here automatically.
           </div>

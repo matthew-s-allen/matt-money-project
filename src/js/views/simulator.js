@@ -23,12 +23,33 @@ const Simulator = (() => {
   // ── Default simulation params ──────────────────────────────
   function getParams() {
     const profile = Store.profile.get();
+    const cards = Store.data.getCreditCards();
+    const loans = Store.data.getLoans();
+
+    // Calculate actual debt from real data
+    const totalCardDebt = (cards || []).reduce((s, c) => s + (c.currentBalance || 0), 0);
+    const totalLoanDebt = (loans || []).reduce((s, l) => s + (l.remainingBalance || l.amount || 0), 0);
+    const totalDebt = totalCardDebt + totalLoanDebt;
+
+    // Calculate actual monthly payments
+    const totalMonthlyPayment = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0)
+      + (cards || []).reduce((s, c) => s + (c.minPayment || 0), 0);
+
+    // Weighted average interest rate across all debts
+    let weightedRate = 9.9; // fallback
+    if (totalDebt > 0) {
+      const cardWeighted = (cards || []).reduce((s, c) => s + (c.currentBalance || 0) * (c.interestRate || 0), 0);
+      const loanWeighted = (loans || []).reduce((s, l) => s + (l.remainingBalance || l.amount || 0) * (l.interestRate || 0), 0);
+      const calc = (cardWeighted + loanWeighted) / totalDebt;
+      if (calc > 0) weightedRate = calc;
+    }
+
     return {
       salary:        profile.salary || 7500,
       savingsRate:   30,        // % of salary to save
-      debtPayment:   1500,      // monthly toward debt
-      debt:          profile.debtTotal || 14000,
-      debtInterest:  9.9,       // % per month (typical cartão rotativo min payment)
+      debtPayment:   totalMonthlyPayment || 1500,
+      debt:          totalDebt || profile.debtTotal || 14000,
+      debtInterest:  weightedRate,
       fgts:          profile.fgts || 68000,
       fgtsRate:      6,         // % per year (TR + profit sharing)
       carValue:      profile.carValue || 50000,

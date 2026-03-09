@@ -59,7 +59,7 @@ const Accounts = (() => {
       <div id="accounts-tab-content" ${activeTab !== 'accounts' ? 'class="hidden"' : ''}>
 
         <!-- Summary cards -->
-        <div class="grid-2" style="margin-bottom:var(--space-md)">
+        <div class="grid-${totalLoanBalance > 0 ? '3' : '2'}" style="margin-bottom:var(--space-md)">
           <div class="card" style="text-align:center">
             <div class="stat-label">Bank Balance</div>
             <div class="stat-value positive" style="font-size:20px;margin-top:4px">${Fmt.currency(totalBankBalance)}</div>
@@ -70,6 +70,12 @@ const Accounts = (() => {
             <div class="stat-value negative" style="font-size:20px;margin-top:4px">${Fmt.currency(totalCardBalance)}</div>
             <div class="t-muted" style="margin-top:4px">${totalCardLimit > 0 ? Fmt.percent(totalCardBalance / totalCardLimit * 100) + ' used' : cards.length + ' card' + (cards.length !== 1 ? 's' : '')}</div>
           </div>
+          ${totalLoanBalance > 0 ? `
+          <div class="card" style="text-align:center">
+            <div class="stat-label">Loan Balance</div>
+            <div class="stat-value negative" style="font-size:20px;margin-top:4px">${Fmt.currency(totalLoanBalance)}</div>
+            <div class="t-muted" style="margin-top:4px">${Fmt.currency(totalLoanPayment)}/mo</div>
+          </div>` : ''}
         </div>
 
         <!-- Bank Accounts -->
@@ -134,7 +140,7 @@ const Accounts = (() => {
         </div>
 
         <!-- Debt Trajectory -->
-        ${cards.length > 0 ? renderCardDebtOverview(cards) : ''}
+        ${cards.length > 0 || (loans || []).length > 0 ? renderCardDebtOverview(cards, loans) : ''}
 
         <!-- Future Faturas -->
         ${cards.length > 0 ? renderFuturasFaturas(cards) : ''}
@@ -152,7 +158,7 @@ const Accounts = (() => {
     if (activeTab === 'cashflow') {
       CashFlow.render(document.getElementById('cashflow-tab-content'));
     }
-    setTimeout(() => initDebtChart(cards), 0);
+    setTimeout(() => initDebtChart(cards, loans), 0);
   }
 
   function switchTab(tab) {
@@ -719,7 +725,7 @@ const Accounts = (() => {
 
   // ── Debt Trajectory ───────────────────────────────────────
 
-  function getMonthlyTotals(cards, months) {
+  function getMonthlyTotals(cards, months, loans) {
     const now          = new Date();
     const installments = API.getInstallments();
     const faturas      = API.getFaturas();
@@ -745,19 +751,27 @@ const Accounts = (() => {
         }
       }
 
+      // Include loan monthly payments
+      for (const loan of (loans || [])) {
+        if ((loan.remainingBalance || loan.amount || 0) > 0) {
+          total += loan.monthlyPayment || 0;
+        }
+      }
+
       result.push({ month: mo, label: `${PT_MONTHS[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`, total });
     }
 
     return result;
   }
 
-  function renderCardDebtOverview(cards) {
+  function renderCardDebtOverview(cards, loans) {
     const now          = new Date();
     const installments = API.getInstallments();
     const profile      = Store.profile.get();
 
-    // Total current card debt
-    const totalCurrentDebt = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+    // Total current debt (cards + loans)
+    const totalCurrentDebt = cards.reduce((s, c) => s + (c.currentBalance || 0), 0)
+      + (loans || []).reduce((s, l) => s + (l.remainingBalance || l.amount || 0), 0);
 
     // Total remaining installment commitment
     let totalCommitted = 0;
@@ -776,8 +790,15 @@ const Accounts = (() => {
       if (!latestEndMonth || endKey > latestEndMonth) latestEndMonth = endKey;
     }
 
+    // Include loan payment commitments
+    for (const loan of (loans || [])) {
+      if ((loan.remainingBalance || loan.amount || 0) > 0 && loan.monthlyPayment) {
+        totalCommitted += loan.remainingBalance || loan.amount || 0;
+      }
+    }
+
     const payoffDisplay = latestEndMonth ? Fmt.monthYear(latestEndMonth + '-01') : 'None';
-    const monthlyData   = getMonthlyTotals(cards, 1);
+    const monthlyData   = getMonthlyTotals(cards, 1, loans);
     const thisMonthTotal = monthlyData[0]?.total || 0;
 
     // "Live on the 15th" — can the adiantamento cover this month's card bills?
@@ -835,11 +856,11 @@ const Accounts = (() => {
     `;
   }
 
-  function initDebtChart(cards) {
+  function initDebtChart(cards, loans) {
     const canvas = document.getElementById('debt-trajectory-chart');
-    if (!canvas || !cards.length) return;
+    if (!canvas || (!cards.length && !(loans || []).length)) return;
 
-    const monthlyData  = getMonthlyTotals(cards, 12);
+    const monthlyData  = getMonthlyTotals(cards, 12, loans);
     const currentMoKey = Fmt.currentMonthKey();
     const isDark       = document.documentElement.getAttribute('data-theme') === 'dark';
 
