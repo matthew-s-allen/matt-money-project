@@ -270,6 +270,34 @@
       <!-- Cash flow warning panel -->
       <div id="setup-cashflow-preview" style="margin-bottom:var(--space-md)"></div>
 
+      <!-- Monthly subscriptions section -->
+      <div style="margin-bottom:var(--space-md)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-sm)">
+          <div>
+            <div style="font-size:13px;font-weight:600">Monthly Subscriptions</div>
+            <div style="font-size:11px;color:var(--text-muted)">Recurring fixed costs you pay every month</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="SetupWizard.addSubscription()" style="flex-shrink:0">+ Add</button>
+        </div>
+        <div id="setup-subscriptions-list"></div>
+        <!-- Add subscription row -->
+        <div id="setup-sub-add-row" style="display:none;background:var(--bg-card);border:1px solid var(--border-accent);border-radius:var(--radius-md);padding:var(--space-sm);margin-top:6px">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="setup-sub-emoji" class="form-input" placeholder="📱" maxlength="2" style="width:46px;text-align:center;font-size:16px;padding:4px;flex-shrink:0" />
+            <input type="text" id="setup-sub-name" class="form-input" placeholder="Netflix, Spotify…" style="flex:1;min-width:80px" />
+            <div style="position:relative;width:90px;flex-shrink:0">
+              <span style="position:absolute;left:7px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--text-muted);pointer-events:none">R$</span>
+              <input type="number" id="setup-sub-amount" class="form-input" placeholder="0" inputmode="decimal" style="padding-left:24px;font-size:13px" />
+            </div>
+            <input type="number" id="setup-sub-day" class="form-input" placeholder="Dia" min="1" max="31" inputmode="numeric" style="width:54px;flex-shrink:0" />
+          </div>
+          <div style="display:flex;gap:var(--space-sm);margin-top:8px">
+            <button class="btn btn-primary btn-sm" style="flex:1" onclick="SetupWizard.confirmAddSubscription()">Add subscription</button>
+            <button class="btn btn-ghost btn-sm" onclick="SetupWizard.cancelAddSubscription()">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <div id="setup-categories-list"></div>
 
       <!-- Add custom category -->

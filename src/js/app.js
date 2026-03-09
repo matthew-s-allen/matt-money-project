@@ -810,6 +810,7 @@ const SetupWizard = (() => {
     renderAccounts();
     renderCards();
     renderLoans();
+    renderSubscriptionsList();
     renderCategories();
     showStep(1);
   }
@@ -1214,7 +1215,7 @@ const SetupWizard = (() => {
     if (step === 2) { updateSalaryPreview(); buildIncomeChart(); }
     if (step === 3) updateGoalHint();
     if (step === 5) renderCards();
-    if (step === 7) { renderCategories(); updateCashFlowPreview(); }
+    if (step === 7) { renderSubscriptionsList(); renderCategories(); updateCashFlowPreview(); }
   }
 
   function next(fromStep) {
@@ -1631,6 +1632,7 @@ const SetupWizard = (() => {
     const monthlyIncome = b.totalTakeHome;
     const allLoans = Store.data.getLoans();
     const loansTotal = allLoans.reduce((s, l) => s + (l.monthlyPayment || 0), 0);
+    const subsTotal = Store.data.getSubscriptions().filter(s => s.active !== false).reduce((s, sub) => s + (sub.amount || 0), 0);
     let budgetTotal = 0;
     document.querySelectorAll('.setup-cat-budget').forEach(inp => { budgetTotal += parseFloat(inp.value) || 0; });
     const now = new Date();
@@ -1641,16 +1643,73 @@ const SetupWizard = (() => {
     const allFaturas = Store.data.getFaturas();
     const ccAmounts = months.map(mo => allFaturas.filter(f => f.month === mo && f.amount > 0).reduce((s,f) => s+(f.amount||0), 0));
     const ccAvg = ccAmounts.reduce((s,v)=>s+v,0) / 3 || 0;
-    const remaining = monthlyIncome - ccAvg - loansTotal - budgetTotal;
+    const remaining = monthlyIncome - ccAvg - loansTotal - subsTotal - budgetTotal;
     const over = remaining < 0;
     el.innerHTML = '<div style="background:' + (over?'rgba(239,68,68,0.1)':'var(--bg-card)') + ';border:1px solid ' + (over?'var(--red)':'var(--border)') + ';border-radius:var(--radius-md);padding:var(--space-md)">' +
       '<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text-secondary)">Previsao mensal</div>' +
       '<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>Take-home</span><span style="color:var(--green)">' + Fmt.currency(monthlyIncome) + '</span></div>' +
       (ccAvg > 0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>- Faturas CC (media)</span><span>' + Fmt.currency(ccAvg) + '</span></div>' : '') +
       (loansTotal > 0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>- Emprestimos</span><span>' + Fmt.currency(loansTotal) + '</span></div>' : '') +
+      (subsTotal > 0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--red);margin-bottom:2px"><span>- Assinaturas mensais</span><span>' + Fmt.currency(subsTotal) + '</span></div>' : '') +
       (budgetTotal > 0 ? '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:2px"><span>- Orcamento categorias</span><span>' + Fmt.currency(budgetTotal) + '</span></div>' : '') +
       '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-size:13px;font-weight:700"><span>Sobra</span><span style="color:' + (over?'var(--red)':'var(--green)') + '">' + Fmt.currency(remaining) + (over?' — acima do orcamento!':'') + '</span></div>' +
     '</div>';
+  }
+
+  // ── Subscriptions management (step 7) ─────────────────────
+
+  function renderSubscriptionsList() {
+    const el = document.getElementById('setup-subscriptions-list');
+    if (!el) return;
+    const subs = Store.data.getSubscriptions();
+    if (!subs.length) {
+      el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0">No subscriptions added yet.</div>';
+      return;
+    }
+    el.innerHTML = subs.map(s => `
+      <div class="setup-cat-row" data-sub-id="${s.id}" style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:6px;padding:8px var(--space-md);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md)">
+        <span style="font-size:18px;width:24px;text-align:center;flex-shrink:0">${App.esc(s.emoji || '📱')}</span>
+        <span style="flex:1;font-size:13px;font-weight:500">${App.esc(s.name)}</span>
+        ${s.billingDay ? `<span style="font-size:10px;color:var(--text-muted)">day ${s.billingDay}</span>` : ''}
+        <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:var(--red)">${Fmt.compact(s.amount)}</span>
+        <button onclick="SetupWizard.removeSubscription('${s.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;padding:2px 4px;line-height:1;flex-shrink:0">×</button>
+      </div>
+    `).join('');
+    updateCashFlowPreview();
+  }
+
+  function addSubscription() {
+    const row = document.getElementById('setup-sub-add-row');
+    if (row) row.style.display = 'block';
+    document.getElementById('setup-sub-name')?.focus();
+  }
+
+  function cancelAddSubscription() {
+    const row = document.getElementById('setup-sub-add-row');
+    if (row) row.style.display = 'none';
+    ['setup-sub-emoji','setup-sub-name','setup-sub-amount','setup-sub-day'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  }
+
+  function confirmAddSubscription() {
+    const emoji  = document.getElementById('setup-sub-emoji')?.value.trim()  || '📱';
+    const name   = document.getElementById('setup-sub-name')?.value.trim();
+    const amount = parseFloat(document.getElementById('setup-sub-amount')?.value) || 0;
+    const day    = parseInt(document.getElementById('setup-sub-day')?.value)   || 1;
+    if (!name) { App.toast('Enter a subscription name', 'error'); return; }
+    if (amount <= 0) { App.toast('Enter the monthly amount', 'error'); return; }
+    const subs = Store.data.getSubscriptions();
+    subs.push({ id: crypto.randomUUID(), name, amount, emoji, billingDay: day, active: true });
+    Store.data.setSubscriptions(subs);
+    cancelAddSubscription();
+    renderSubscriptionsList();
+  }
+
+  function removeSubscription(id) {
+    Store.data.setSubscriptions(Store.data.getSubscriptions().filter(s => s.id !== id));
+    renderSubscriptionsList();
   }
 
   async function finish() {
@@ -1691,6 +1750,7 @@ const SetupWizard = (() => {
     addCard, removeCard, onCardNameChange, updateCardBalance, renderCardFaturas, updateFaturaSum,
     addLoan, removeLoan,
     addCustomCategory, removeCustomCategory, updateCashFlowPreview,
+    addSubscription, cancelAddSubscription, confirmAddSubscription, removeSubscription,
     finish
   };
 

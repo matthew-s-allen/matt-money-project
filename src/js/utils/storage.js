@@ -97,6 +97,10 @@ const Store = (() => {
     getLoans()             { return raw.get('data_loans', []); },
     setLoans(v)            { raw.set('data_loans', v); },
 
+    // ── Monthly Subscriptions (fixed recurring costs) ──────────
+    getSubscriptions()     { return raw.get('data_subscriptions', []); },
+    setSubscriptions(v)    { raw.set('data_subscriptions', v); },
+
     // Export everything as a single JSON blob
     exportAll() {
       return {
@@ -112,6 +116,7 @@ const Store = (() => {
         installments:  data.getInstallments(),
         faturas:       data.getFaturas(),
         cashFlow:      data.getCashFlow(),
+        subscriptions: data.getSubscriptions(),
         loans:         data.getLoans(),
         setupDone:     data.isSetupDone(),
         profile:       profile.get(),
@@ -133,6 +138,7 @@ const Store = (() => {
       if (blob.faturas)       data.setFaturas(blob.faturas);
       if (blob.cashFlow)      data.setCashFlow(blob.cashFlow);
       if (blob.loans)         data.setLoans(blob.loans);
+      if (blob.subscriptions) data.setSubscriptions(blob.subscriptions);
       if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
       if (blob.profile)  profile.set(blob.profile);
       if (blob.config)   config.set(blob.config);
