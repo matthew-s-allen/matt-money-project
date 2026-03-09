@@ -114,14 +114,7 @@ const Dashboard = (() => {
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
     const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
-    // Credit card bills: use manual fatura for the month, or fall back to currentBalance
-    const faturas = API.getFaturas();
-    let cardBillTotal = 0;
-    (cards || []).forEach(card => {
-      const fatura = faturas.find(f => f.cardId === card.id && f.month === activeMonth);
-      cardBillTotal += fatura ? fatura.amount : (card.currentBalance || 0);
-    });
-    const totalCommitted = subsTotal + instTotal + loanTotal + cardBillTotal;
+    const totalCommitted = subsTotal + instTotal + loanTotal;
     const totalOutflows = expenses + totalCommitted;
 
     if (!profile.salary || profile.salary === 0) {
@@ -159,7 +152,7 @@ const Dashboard = (() => {
             <span>Tracked: ${Fmt.compact(expenses)}</span>
             ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
             ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
-            ${cardBillTotal > 0 ? `<span>· Cards: ${Fmt.compact(cardBillTotal)}</span>` : ''}
+
             ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
           </div>
           ` : ''}
@@ -267,7 +260,6 @@ const Dashboard = (() => {
           <span>Tracked: ${Fmt.compact(expenses)}</span>
           ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
           ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
-          ${cardBillTotal > 0 ? `<span>· Cards: ${Fmt.compact(cardBillTotal)}</span>` : ''}
           ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
         </div>
         ` : ''}
@@ -283,13 +275,6 @@ const Dashboard = (() => {
     const { adiantamento, salario30, advanceDay, salaryDay } = sched;
 
     const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
-    // Use fatura amount for the month if available, otherwise fall back to currentBalance
-    const cfFaturas = API.getFaturas();
-    let totalCardBalance = 0;
-    (cards || []).forEach(card => {
-      const fatura = cfFaturas.find(f => f.cardId === card.id && f.month === activeMonth);
-      totalCardBalance += fatura ? fatura.amount : (card.currentBalance || 0);
-    });
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
     const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
@@ -305,7 +290,7 @@ const Dashboard = (() => {
       - (advanceReceived ? 0 : expenses);
 
     // Overflow: end of month projection — income minus all outflows including subscriptions/installments/loans
-    const projectedOverflow = adiantamento + salario30 - expenses - subsTotal - instTotal - totalCardBalance - loanTotal;
+    const projectedOverflow = adiantamento + salario30 - expenses - subsTotal - instTotal - loanTotal;
     const overflowColor = projectedOverflow >= 0 ? 'var(--green)' : 'var(--red)';
 
     // Step indicator
@@ -384,15 +369,6 @@ const Dashboard = (() => {
             <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
               <span style="font-size:11px;color:var(--text-muted)">− Installments this month</span>
               <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(instTotal)}</span>
-            </div>
-          </div>
-          ` : ''}
-          ${totalCardBalance > 0 ? `
-          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
-            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
-            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
-              <span style="font-size:11px;color:var(--text-muted)">− Card bill (est.)</span>
-              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(totalCardBalance)}</span>
             </div>
           </div>
           ` : ''}
@@ -508,17 +484,6 @@ const Dashboard = (() => {
     const expenses = s.totalExpenses || 0;
     const cats     = { ...(s.byCategory || {}) };
 
-    // Include credit card bills in category breakdown
-    const rfFaturas = API.getFaturas();
-    let rfCardBillTotal = 0;
-    (cards || []).forEach(card => {
-      const fatura = rfFaturas.find(f => f.cardId === card.id && f.month === App.state.activeMonth);
-      rfCardBillTotal += fatura ? fatura.amount : (card.currentBalance || 0);
-    });
-    if (rfCardBillTotal > 0) {
-      cats['credit_cards'] = (cats['credit_cards'] || 0) + rfCardBillTotal;
-    }
-
     const now = new Date();
     const [y, m] = App.state.activeMonth.split('-').map(Number);
     const isCurrentMonth = y === now.getFullYear() && m === now.getMonth() + 1;
@@ -633,7 +598,7 @@ const Dashboard = (() => {
     `;
 
     if (Object.keys(cats).length > 0) {
-      renderTelemetry(cats, expenses + rfCardBillTotal);
+      renderTelemetry(cats, expenses);
       renderDonut(cats);
     }
     // Annual overview chart (annualData already computed above)

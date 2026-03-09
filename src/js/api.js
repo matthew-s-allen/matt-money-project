@@ -105,6 +105,18 @@ const API = (() => {
       }
     });
 
+    // Include credit card faturas (bills) as expenses
+    const faturas = getFaturas();
+    const cards = Store.data.getCreditCards();
+    (cards || []).forEach(card => {
+      const fatura = faturas.find(f => f.cardId === card.id && f.month === month);
+      const cardAmt = fatura ? fatura.amount : (card.currentBalance || 0);
+      if (cardAmt > 0) {
+        expenses += cardAmt;
+        byCat['credit_cards'] = (byCat['credit_cards'] || 0) + cardAmt;
+      }
+    });
+
     const [year, mon] = month.split('-').map(Number);
     const daysInMonth = new Date(year, mon, 0).getDate();
     const now         = new Date();
@@ -141,6 +153,23 @@ const API = (() => {
       const amt = parseFloat(t.amount) || 0;
       if (t.type === 'income') hist[mo].income += amt;
       else hist[mo].expenses += amt;
+    });
+
+    // Include credit card faturas in each month's expenses
+    const histFaturas = getFaturas();
+    const histCards = Store.data.getCreditCards();
+    for (const [mo, entry] of Object.entries(hist)) {
+      (histCards || []).forEach(card => {
+        const fatura = histFaturas.find(f => f.cardId === card.id && f.month === mo);
+        const cardAmt = fatura ? fatura.amount : 0;
+        if (cardAmt > 0) entry.expenses += cardAmt;
+      });
+    }
+    // For months with no transactions but with faturas, add them
+    histFaturas.forEach(f => {
+      if (!hist[f.month]) {
+        hist[f.month] = { month: f.month, income: 0, expenses: f.amount || 0 };
+      }
     });
 
     const result = Object.values(hist)
@@ -821,6 +850,8 @@ Critical extraction rules:
     const loans = Store.data.getLoans();
     const loansTotal = loans.reduce((s, l) => s + (l.monthlyPayment || 0), 0);
     const allTx = Store.data.getTransactions();
+    const aoFaturas = getFaturas();
+    const aoCards = Store.data.getCreditCards();
 
     const now = new Date();
     const currentMonth = now.getFullYear() * 12 + now.getMonth(); // absolute month index
@@ -844,6 +875,13 @@ Critical extraction rules:
         const amt = parseFloat(t.amount) || 0;
         if (t.type === 'income') actualIncome += amt;
         else actualExpenses += amt;
+      });
+
+      // Include credit card faturas (bills) as expenses
+      (aoCards || []).forEach(card => {
+        const fatura = aoFaturas.find(f => f.cardId === card.id && f.month === monthKey);
+        const cardAmt = fatura ? fatura.amount : (card.currentBalance || 0);
+        if (cardAmt > 0) actualExpenses += cardAmt;
       });
 
       // Installments for this month
