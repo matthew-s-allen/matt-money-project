@@ -23,11 +23,11 @@
   <div class="setup-container">
     <div class="setup-logo">M</div>
     <h1 class="setup-title">Matt Money</h1>
-    <p class="setup-subtitle">Let's set up your finances. Add your accounts, goals, and budgets so every transaction is tracked properly.</p>
+    <p class="setup-subtitle" id="setup-intro-subtitle">Your personal finance OS — built around the <strong>"Live on the 15th"</strong> strategy. Takes about 5 minutes to set up.</p>
 
     <!-- Import from backup option -->
     <div id="setup-import-section" style="margin-bottom:var(--space-lg);text-align:center">
-      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:var(--space-sm)">Have a backup? Restore it instead.</p>
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:var(--space-sm)">Returning user? Restore a backup instead.</p>
       <label class="btn btn-ghost btn-sm" style="cursor:pointer">
         Import Backup
         <input type="file" id="setup-import-file" accept=".json" style="display:none" />
@@ -52,62 +52,40 @@
     <!-- Step 1: Profile -->
     <div id="setup-step-1" class="setup-step-content">
       <h2 class="setup-step-title">Your Profile</h2>
+      <p class="setup-step-desc">Tell us about yourself so we can personalize every calculation.</p>
       <div class="form-group">
         <label class="form-label">Your name</label>
-        <input type="text" id="setup-name" class="form-input" placeholder="Matthew" />
+        <input type="text" id="setup-name" class="form-input" placeholder="Matthew" autocomplete="given-name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Employer</label>
+        <input type="text" id="setup-employer" class="form-input" placeholder="Company name" autocomplete="organization" />
       </div>
       <div class="form-group">
         <label class="form-label">Gross monthly salary (R$)</label>
         <input type="number" id="setup-salary" class="form-input" placeholder="7500" inputmode="decimal" />
+        <span class="form-hint">Your salary before INSS, IRRF and other deductions.</span>
       </div>
       <div class="form-group">
-        <label class="form-label">Work start date</label>
+        <label class="form-label">CLT start date</label>
         <input type="date" id="setup-work-start" class="form-input" />
+        <span class="form-hint">Used to calculate FGTS balance and severance rights.</span>
       </div>
-      <button class="btn btn-primary btn-full" onclick="SetupWizard.next(1)">Continue</button>
+      <button class="btn btn-primary btn-full" onclick="SetupWizard.next(1)" style="margin-top:var(--space-lg)">Continue →</button>
     </div>
 
     <!-- Step 2: Employment & Salary Details -->
     <div id="setup-step-2" class="setup-step-content hidden">
-      <h2 class="setup-step-title">Salary & Benefits</h2>
-      <p class="setup-step-desc">Your net salary will be calculated automatically based on CLT rules.</p>
+      <h2 class="setup-step-title">Salary & Income</h2>
+      <p class="setup-step-desc">We'll calculate your exact take-home pay automatically using CLT rules.</p>
 
-      <div class="divider-text" style="margin-top:0">Income Schedule</div>
+      <!-- Live salary preview -->
+      <div id="setup-salary-preview" class="card" style="margin-bottom:var(--space-md);background:var(--bg-secondary)"></div>
+
+      <div class="divider-text" style="margin-top:0">Deductions (from your holerite)</div>
       <div class="grid-2">
         <div class="form-group">
-          <label class="form-label">Adiantamento (R$)</label>
-          <input type="number" id="setup-adiantamento" class="form-input" placeholder="e.g. 3120" inputmode="decimal" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Adiantamento day</label>
-          <input type="number" id="setup-adiantamento-day" class="form-input" value="15" min="1" max="31" inputmode="numeric" />
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Salary payment day</label>
-        <input type="number" id="setup-salary-day" class="form-input" value="30" min="1" max="31" inputmode="numeric" />
-      </div>
-
-      <div class="divider-text">Vacation Policy</div>
-      <div class="grid-2">
-        <div class="form-group">
-          <label class="form-label">Vacation days/year</label>
-          <input type="number" id="setup-vacation-days" class="form-input" placeholder="30" value="30" inputmode="numeric" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Periods/year</label>
-          <input type="number" id="setup-vacation-periods" class="form-input" placeholder="3" value="3" min="1" max="3" inputmode="numeric" />
-        </div>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Days to sell (abono pecuniario, max 10)</label>
-        <input type="number" id="setup-vacation-sell" class="form-input" placeholder="0" value="0" min="0" max="10" inputmode="numeric" />
-      </div>
-
-      <div class="divider-text">Monthly Deductions</div>
-      <div class="grid-2">
-        <div class="form-group">
-          <label class="form-label">Health plan (R$)</label>
+          <label class="form-label">Plano de saúde (R$)</label>
           <input type="number" id="setup-deduct-health" class="form-input" placeholder="0" inputmode="decimal" />
         </div>
         <div class="form-group">
@@ -121,112 +99,162 @@
           <input type="number" id="setup-deduct-vt" class="form-input" placeholder="0" inputmode="decimal" />
         </div>
         <div class="form-group">
-          <label class="form-label">Other deductions (R$)</label>
+          <label class="form-label">Outros descontos (R$)</label>
           <input type="number" id="setup-deduct-other" class="form-input" placeholder="0" inputmode="decimal" />
         </div>
       </div>
 
-      <div class="divider-text">Monthly Benefits</div>
+      <div class="divider-text">Benefits (VR/VA)</div>
       <div class="grid-2">
         <div class="form-group">
-          <label class="form-label">Vale Alimentacao (R$)</label>
+          <label class="form-label">Vale Alimentação (R$)</label>
           <input type="number" id="setup-benefit-va" class="form-input" placeholder="0" inputmode="decimal" />
         </div>
         <div class="form-group">
-          <label class="form-label">Vale Refeicao (R$)</label>
+          <label class="form-label">Vale Refeição (R$)</label>
           <input type="number" id="setup-benefit-vr" class="form-input" placeholder="0" inputmode="decimal" />
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Other benefits (R$)</label>
+        <label class="form-label">Outros benefícios (R$)</label>
         <input type="number" id="setup-benefit-other" class="form-input" placeholder="0" inputmode="decimal" />
       </div>
 
-      <!-- Live salary preview -->
-      <div id="setup-salary-preview" class="card" style="margin-top:var(--space-md);background:var(--bg-secondary)"></div>
+      <div class="divider-text">Vacation (Férias)</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Vacation days/year</label>
+          <input type="number" id="setup-vacation-days" class="form-input" placeholder="30" value="30" inputmode="numeric" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Periods/year</label>
+          <input type="number" id="setup-vacation-periods" class="form-input" placeholder="3" value="3" min="1" max="3" inputmode="numeric" />
+          <span class="form-hint">CLT allows up to 3 splits</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Days to sell — abono pecuniário (max 10)</label>
+        <input type="number" id="setup-vacation-sell" class="form-input" placeholder="0" value="0" min="0" max="10" inputmode="numeric" />
+      </div>
+
+      <div class="setup-info-box" style="margin-top:var(--space-lg)">
+        <span class="setup-info-icon">💡</span>
+        <strong>Income schedule</strong> — When do you receive money?
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Adiantamento amount (R$)</label>
+          <input type="number" id="setup-adiantamento" class="form-input" placeholder="e.g. 3120" inputmode="decimal" />
+          <span class="form-hint">Your salary advance (typically ~40–50% of net)</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Paid on day</label>
+          <input type="number" id="setup-adiantamento-day" class="form-input" value="15" min="1" max="31" inputmode="numeric" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Full salary paid on day</label>
+        <input type="number" id="setup-salary-day" class="form-input" value="30" min="1" max="31" inputmode="numeric" />
+        <span class="form-hint">The "Live on the 15th" goal: route this entire payment to savings.</span>
+      </div>
 
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(2)">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(2)">Continue</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(2)">← Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(2)">Continue →</button>
       </div>
     </div>
 
     <!-- Step 3: Goals & Assets -->
     <div id="setup-step-3" class="setup-step-content hidden">
-      <h2 class="setup-step-title">Goals & Assets</h2>
-      <p class="setup-step-desc">Set your savings target and enter current asset values.</p>
-      <div class="form-group">
-        <label class="form-label">Savings goal (R$)</label>
-        <input type="number" id="setup-savings-goal" class="form-input" placeholder="500000" inputmode="decimal" />
+      <h2 class="setup-step-title">Patrimônio & Goals</h2>
+      <p class="setup-step-desc">Your net worth snapshot and where you want to be. We'll track your progress automatically.</p>
+
+      <div class="divider-text" style="margin-top:0">Financial Goal</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Target amount (R$)</label>
+          <input type="number" id="setup-savings-goal" class="form-input" placeholder="500000" inputmode="decimal" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">In how many years</label>
+          <input type="number" id="setup-target-years" class="form-input" placeholder="15" inputmode="numeric" />
+        </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Target years to reach goal</label>
-        <input type="number" id="setup-target-years" class="form-input" placeholder="15" inputmode="numeric" />
-      </div>
+      <!-- Projection hint -->
+      <div id="setup-goal-hint" class="form-hint" style="margin-top:-4px;margin-bottom:var(--space-md)"></div>
+
+      <div class="divider-text">Current Assets</div>
       <div class="form-group">
         <label class="form-label">FGTS balance (R$)</label>
-        <input type="number" id="setup-fgts" class="form-input" placeholder="68000" inputmode="decimal" />
+        <input type="number" id="setup-fgts" class="form-input" placeholder="0" inputmode="decimal" />
+        <span class="form-hint">Check the FGTS app (Caixa) for your exact balance.</span>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Liquid savings (R$)</label>
+          <input type="number" id="setup-savings" class="form-input" placeholder="0" inputmode="decimal" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Investments (R$)</label>
+          <input type="number" id="setup-investments" class="form-input" placeholder="0" inputmode="decimal" />
+          <span class="form-hint">CDB, Tesouro, FIIs, stocks…</span>
+        </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Liquid savings (R$)</label>
-        <input type="number" id="setup-savings" class="form-input" placeholder="0" inputmode="decimal" />
+        <label class="form-label">Car current market value (R$)</label>
+        <input type="number" id="setup-car-value" class="form-input" placeholder="0" inputmode="decimal" />
+        <span class="form-hint">Check FIPE table for your model/year.</span>
       </div>
-      <div class="form-group">
-        <label class="form-label">Investments (R$)</label>
-        <input type="number" id="setup-investments" class="form-input" placeholder="0" inputmode="decimal" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">Car current value (R$)</label>
-        <input type="number" id="setup-car-value" class="form-input" placeholder="50000" inputmode="decimal" />
-      </div>
+
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(3)">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(3)">Continue</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(3)">← Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(3)">Continue →</button>
       </div>
     </div>
 
     <!-- Step 4: Bank Accounts -->
     <div id="setup-step-4" class="setup-step-content hidden">
       <h2 class="setup-step-title">Bank Accounts</h2>
-      <p class="setup-step-desc">Add your checking and savings accounts with current balances.</p>
+      <p class="setup-step-desc">Add every account where money lands — checking, savings, and investments. Open your bank app to get the exact balance.</p>
       <div id="setup-accounts-list"></div>
-      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addAccount()" style="margin-top:var(--space-sm)">+ Add account</button>
+      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addAccount()" style="margin-top:var(--space-sm);width:100%">+ Add another account</button>
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(4)">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(4)">Continue</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(4)">← Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(4)">Continue →</button>
       </div>
     </div>
 
     <!-- Step 5: Credit Cards -->
     <div id="setup-step-5" class="setup-step-content hidden">
       <h2 class="setup-step-title">Credit Cards</h2>
-      <p class="setup-step-desc">Add your credit cards with balances and limits.</p>
+      <p class="setup-step-desc">Add every card you use. Open your card app to get limits, balances, closing and due dates.</p>
       <div id="setup-cards-list"></div>
-      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addCard()" style="margin-top:var(--space-sm)">+ Add credit card</button>
+      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addCard()" style="margin-top:var(--space-sm);width:100%">+ Add another card</button>
 
       <!-- Fatura entry section — shown after at least one card is named -->
       <div id="setup-faturas-section" class="hidden" style="margin-top:var(--space-lg)">
         <div class="divider-text">Upcoming Faturas</div>
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:var(--space-md);line-height:1.5">
-          Open each card's app and enter the fatura amount for upcoming months. This bootstraps your debt timeline. Leave blank if you don't know yet.
-        </p>
+        <div class="setup-info-box">
+          <span class="setup-info-icon">📱</span>
+          Open each card's app and enter the fatura amount for upcoming months. This bootstraps your full debt picture from day one. <strong>Leave blank</strong> for months you don't know yet.
+        </div>
         <div id="setup-faturas-table"></div>
       </div>
 
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(5)">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(5)">Continue</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(5)">← Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(5)">Continue →</button>
       </div>
     </div>
 
     <!-- Step 6: Category Budgets -->
     <div id="setup-step-6" class="setup-step-content hidden">
       <h2 class="setup-step-title">Monthly Budgets</h2>
-      <p class="setup-step-desc">Set a monthly spending limit for each category. You can adjust later.</p>
+      <p class="setup-step-desc">Set a monthly limit per category. This is how Matt Money warns you when spending is drifting — you can always adjust later.</p>
       <div id="setup-categories-list"></div>
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(6)">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.finish()">Start Tracking</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(6)">← Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.finish()">🚀 Start Tracking</button>
       </div>
     </div>
   </div>
@@ -307,12 +335,18 @@
 
     <div class="divider-text" style="margin-top:var(--space-lg)">Your Profile</div>
 
-    <div class="form-group">
-      <label class="form-label">Your name</label>
-      <input type="text" id="settings-name" class="form-input" placeholder="Matthew" />
+    <div class="grid-2">
+      <div class="form-group">
+        <label class="form-label">Your name</label>
+        <input type="text" id="settings-name" class="form-input" placeholder="Matthew" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Employer</label>
+        <input type="text" id="settings-employer" class="form-input" placeholder="Company" />
+      </div>
     </div>
     <div class="form-group">
-      <label class="form-label">Current monthly salary (R$)</label>
+      <label class="form-label">Gross monthly salary (R$)</label>
       <input type="number" id="settings-salary" class="form-input" placeholder="7500" />
     </div>
     <div class="form-group">
