@@ -733,6 +733,26 @@ Critical extraction rules:
   // ── Compatibility stubs (no-ops since data is always local) ──
 
   async function flushQueue()  { return; }
+  // ── Personal Loans ────────────────────────────────────────
+
+  function getLoans() { return Store.data.getLoans(); }
+
+  async function upsertLoan(loan) {
+    const all = Store.data.getLoans();
+    const idx = all.findIndex(l => l.id === loan.id);
+    const entry = { ...loan, id: loan.id || crypto.randomUUID(), updatedAt: new Date().toISOString() };
+    if (idx >= 0) all[idx] = entry; else all.push(entry);
+    Store.data.setLoans(all);
+    Store.cache.invalidateAll();
+    return { data: entry, success: true };
+  }
+
+  async function deleteLoan(id) {
+    Store.data.setLoans(Store.data.getLoans().filter(l => l.id !== id));
+    Store.cache.invalidateAll();
+    return { success: true };
+  }
+
   async function initBackend() { return { success: true }; }
 
   return {
@@ -744,6 +764,7 @@ Critical extraction rules:
     getSalaryMilestones, saveSalaryMilestones,
     getAccounts, upsertAccount, deleteAccount,
     getCreditCards, upsertCreditCard, deleteCreditCard,
+    getLoans, upsertLoan, deleteLoan,
     parseReceiptWithGemini,
     exportData, importData,
     calcSalaryBreakdown, calcINSS, calcIRRF,

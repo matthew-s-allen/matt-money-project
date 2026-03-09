@@ -93,6 +93,10 @@ const Store = (() => {
     getCashFlow()          { return raw.get('data_cash_flow', []); },
     setCashFlow(v)         { raw.set('data_cash_flow', v); },
 
+    // ── Personal Loans & Debts ────────────────────────────────
+    getLoans()             { return raw.get('data_loans', []); },
+    setLoans(v)            { raw.set('data_loans', v); },
+
     // Export everything as a single JSON blob
     exportAll() {
       return {
@@ -108,6 +112,7 @@ const Store = (() => {
         installments:  data.getInstallments(),
         faturas:       data.getFaturas(),
         cashFlow:      data.getCashFlow(),
+        loans:         data.getLoans(),
         setupDone:     data.isSetupDone(),
         profile:       profile.get(),
         config:        config.get()
@@ -127,6 +132,7 @@ const Store = (() => {
       if (blob.installments)  data.setInstallments(blob.installments);
       if (blob.faturas)       data.setFaturas(blob.faturas);
       if (blob.cashFlow)      data.setCashFlow(blob.cashFlow);
+      if (blob.loans)         data.setLoans(blob.loans);
       if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
       if (blob.profile)  profile.set(blob.profile);
       if (blob.config)   config.set(blob.config);
@@ -173,21 +179,44 @@ const Store = (() => {
         carValue: 50000, debtTotal: 14000,
         savingsGoal: 500000, targetYears: 15,
         // Employment
+        salaryType: 'mensalista', // 'mensalista' | 'horista'
+        hourlyRate: 0,
+        hoursPerWeek: 44,
         workStartDate: '',
         vacationDaysTotal: 30,
         vacationPeriods: 3,
         vacationDaysToSell: 0,
-        // Deductions (monthly fixed amounts deducted from paycheck)
+        // Income schedule
+        paymentFrequency: 'quinzenal', // 'monthly' | 'quinzenal' | 'custom'
+        paymentSchedule: [
+          { label: 'Adiantamento', day: 15, percent: 40, isFixed: false, amount: 0 },
+          { label: 'Salário', day: 30, percent: 60, isFixed: false, amount: 0 }
+        ],
+        // Vacation plans (one entry per vacation period taken in the year)
+        vacationPlans: [],
+        // 13th salary installment months (1-12)
+        decimo13Month1: 11, // November
+        decimo13Month2: 12, // December
+        // Dynamic deductions list (non-INSS/IRRF items)
+        deductionsList: [
+          { id: 'health', name: 'Plano de Saúde', type: 'fixed', amount: 0 },
+          { id: 'dental', name: 'Dental', type: 'fixed', amount: 0 },
+          { id: 'vt', name: 'Vale Transporte', type: 'fixed', amount: 0 }
+        ],
+        benefitsList: [
+          { id: 'va', name: 'Vale Alimentação', type: 'fixed', amount: 0 },
+          { id: 'vr', name: 'Vale Refeição', type: 'fixed', amount: 0 }
+        ],
+        // Legacy scalar fields — kept for backward compat with calcSalaryBreakdown
         deductHealthPlan: 0,
         deductDental: 0,
         deductValeTransporte: 0,
         deductOther: 0,
-        // Benefits (monthly values received on top of salary)
         benefitVA: 0,
         benefitVR: 0,
         benefitOther: 0,
-        // Income schedule (for cash flow planning)
-        adiantamentoAmount: 0,  // 0 = not set, auto-calculated when displaying
+        // Legacy income schedule fields
+        adiantamentoAmount: 0,
         adiantamentoDay: 15,
         salaryDay: 30
       });
