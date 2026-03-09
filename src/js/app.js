@@ -32,6 +32,7 @@ const App = (() => {
     { id: 'debt',          emoji: '💳', label: 'Debt',          color: '#ef4444' },
     { id: 'savings',       emoji: '🏦', label: 'Savings',       color: '#39d353' },
     { id: 'restaurant',    emoji: '🍽️', label: 'Dining',        color: '#f59e0b' },
+    { id: 'credit_cards',  emoji: '💳', label: 'Card Bills',    color: '#ef4444' },
     { id: 'other',         emoji: '📦', label: 'Other',         color: '#6b7280' }
   ];
 

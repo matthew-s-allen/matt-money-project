@@ -110,11 +110,18 @@ const Dashboard = (() => {
   }
 
   // ── "Live on the 15th" hero card ───────────────────────────
-  function renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans) {
+  function renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans, cards, activeMonth) {
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
     const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
-    const totalCommitted = subsTotal + instTotal + loanTotal;
+    // Credit card bills: use manual fatura for the month, or fall back to currentBalance
+    const faturas = API.getFaturas();
+    let cardBillTotal = 0;
+    (cards || []).forEach(card => {
+      const fatura = faturas.find(f => f.cardId === card.id && f.month === activeMonth);
+      cardBillTotal += fatura ? fatura.amount : (card.currentBalance || 0);
+    });
+    const totalCommitted = subsTotal + instTotal + loanTotal + cardBillTotal;
     const totalOutflows = expenses + totalCommitted;
 
     if (!profile.salary || profile.salary === 0) {
@@ -152,6 +159,7 @@ const Dashboard = (() => {
             <span>Tracked: ${Fmt.compact(expenses)}</span>
             ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
             ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
+            ${cardBillTotal > 0 ? `<span>· Cards: ${Fmt.compact(cardBillTotal)}</span>` : ''}
             ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
           </div>
           ` : ''}
@@ -259,6 +267,7 @@ const Dashboard = (() => {
           <span>Tracked: ${Fmt.compact(expenses)}</span>
           ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
           ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
+          ${cardBillTotal > 0 ? `<span>· Cards: ${Fmt.compact(cardBillTotal)}</span>` : ''}
           ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
         </div>
         ` : ''}
@@ -267,14 +276,20 @@ const Dashboard = (() => {
   }
 
   // ── Cash flow checkpoints card ─────────────────────────────
-  function renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans) {
+  function renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans, activeMonth) {
     if (!profile.salary || profile.salary === 0) return '';
 
     const sched = computeIncomeSchedule(profile);
     const { adiantamento, salario30, advanceDay, salaryDay } = sched;
 
     const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
-    const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+    // Use fatura amount for the month if available, otherwise fall back to currentBalance
+    const cfFaturas = API.getFaturas();
+    let totalCardBalance = 0;
+    (cards || []).forEach(card => {
+      const fatura = cfFaturas.find(f => f.cardId === card.id && f.month === activeMonth);
+      totalCardBalance += fatura ? fatura.amount : (card.currentBalance || 0);
+    });
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
     const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
@@ -491,7 +506,18 @@ const Dashboard = (() => {
 
     const income   = s.totalIncome   || 0;
     const expenses = s.totalExpenses || 0;
-    const cats     = s.byCategory    || {};
+    const cats     = { ...(s.byCategory || {}) };
+
+    // Include credit card bills in category breakdown
+    const rfFaturas = API.getFaturas();
+    let rfCardBillTotal = 0;
+    (cards || []).forEach(card => {
+      const fatura = rfFaturas.find(f => f.cardId === card.id && f.month === App.state.activeMonth);
+      rfCardBillTotal += fatura ? fatura.amount : (card.currentBalance || 0);
+    });
+    if (rfCardBillTotal > 0) {
+      cats['credit_cards'] = (cats['credit_cards'] || 0) + rfCardBillTotal;
+    }
 
     const now = new Date();
     const [y, m] = App.state.activeMonth.split('-').map(Number);
@@ -523,10 +549,10 @@ const Dashboard = (() => {
       </div>
 
       <!-- 1. Live on the 15th hero -->
-      ${renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans)}
+      ${renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans, cards, App.state.activeMonth)}
 
       <!-- 2. Cash flow checkpoints -->
-      ${renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans)}
+      ${renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans, App.state.activeMonth)}
 
       <!-- 3. Account balances -->
       ${renderAccountsRow(accounts, cards)}
@@ -607,7 +633,7 @@ const Dashboard = (() => {
     `;
 
     if (Object.keys(cats).length > 0) {
-      renderTelemetry(cats, expenses);
+      renderTelemetry(cats, expenses + rfCardBillTotal);
       renderDonut(cats);
     }
     // Annual overview chart (annualData already computed above)
