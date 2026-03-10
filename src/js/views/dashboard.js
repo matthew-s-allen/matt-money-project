@@ -65,13 +65,14 @@ const Dashboard = (() => {
       const installmentItems = API.getMonthlyInstallmentItems(App.state.activeMonth);
       const loans = API.getLoans();
 
-      // CC fatura amounts for the active month (already included in s.totalExpenses)
+      // CC fatura amounts for the active month (already included in s.totalExpenses via getSummary)
       const ccBillsTotal = s.byCategory?.credit_cards || 0;
-      const faturas = API.getFaturas();
-      const ccBillItems = cards.map(card => {
-        const fatura = faturas.find(f => f.cardId === card.id && f.month === App.state.activeMonth);
-        const now0 = new Date();
-        const isCurrentOrFuture = App.state.activeMonth >= `${now0.getFullYear()}-${String(now0.getMonth()+1).padStart(2,'0')}`;
+      const faturas = API.getFaturas().filter(f => f.cardId);
+      const now0 = new Date();
+      const isCurrentOrFuture = App.state.activeMonth >= `${now0.getFullYear()}-${String(now0.getMonth()+1).padStart(2,'0')}`;
+      const ccBillItems = cards.filter(c => c.cardType !== 'voucher').map(card => {
+        // Match fatura by payment month, not billing month
+        const fatura = faturas.find(f => f.cardId === card.id && API.getPaymentMonth(f.month, card) === App.state.activeMonth);
         const amt = fatura ? fatura.amount : (isCurrentOrFuture ? (card.currentBalance || 0) : 0);
         return { name: card.name || card.brand || 'Card', amount: amt, dueDay: card.dueDay };
       }).filter(item => item.amount > 0);
@@ -291,6 +292,10 @@ const Dashboard = (() => {
     const sched = computeIncomeSchedule(profile);
     const { adiantamento, salario30, advanceDay, salaryDay } = sched;
 
+    // Voucher card recharges
+    const voucherCards = (cards || []).filter(c => c.cardType === 'voucher' && c.rechargeAmount > 0);
+    const voucherTotal = voucherCards.reduce((s, c) => s + (c.rechargeAmount || 0), 0);
+
     const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
@@ -307,7 +312,7 @@ const Dashboard = (() => {
       - (advanceReceived ? 0 : expenses);
 
     // Overflow: end of month projection — income minus all outflows including subscriptions/installments/loans
-    const projectedOverflow = adiantamento + salario30 - expenses - subsTotal - instTotal - loanTotal;
+    const projectedOverflow = adiantamento + salario30 + voucherTotal - expenses - subsTotal - instTotal - loanTotal;
     const overflowColor = projectedOverflow >= 0 ? 'var(--green)' : 'var(--red)';
 
     // Step indicator
@@ -346,6 +351,15 @@ const Dashboard = (() => {
               <span style="font-size:11px;color:var(--green);font-family:var(--font-mono)">+${Fmt.compact(adiantamento)}</span>
             </div>
           </div>
+          ${voucherCards.map(vc => `
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">+ ${App.esc(vc.name)} (${vc.rechargeDay || '?'}th)</span>
+              <span style="font-size:11px;color:var(--green);font-family:var(--font-mono)">+${Fmt.compact(vc.rechargeAmount)}</span>
+            </div>
+          </div>
+          `).join('')}
           <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
             <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
             <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
@@ -1259,6 +1273,27 @@ const Dashboard = (() => {
         html += `<td class="year-proj-total-col">${Fmt.compact(b.totalBenefits * 12)}</td></tr>`;
       }
 
+      // Voucher cards row
+      const voucherInc = annualData[0]?.voucherIncome || 0;
+      if (voucherInc > 0) {
+        html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">Voucher cards</td>`;
+        annualData.forEach((m, i) => {
+          const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+          html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(m.voucherIncome || 0)}</td>`;
+        });
+        html += `<td class="year-proj-total-col">${Fmt.compact(voucherInc * 12)}</td></tr>`;
+
+        // Individual voucher card items
+        (annualData[0].voucherCards || []).forEach(vc => {
+          html += `<tr class="year-proj-subrow year-proj-detail"><td class="year-proj-label-col year-proj-detail-label">${App.esc(vc.name)}</td>`;
+          annualData.forEach((m, i) => {
+            const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+            html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(vc.rechargeAmount || 0)}</td>`;
+          });
+          html += `<td class="year-proj-total-col">${Fmt.compact((vc.rechargeAmount || 0) * 12)}</td></tr>`;
+        });
+      }
+
       // 13th salary row
       const m1 = profile.decimo13Month1 || 11;
       const m2 = profile.decimo13Month2 || 12;
@@ -1349,14 +1384,17 @@ const Dashboard = (() => {
         });
         html += `<td class="year-proj-total-col">${Fmt.compact(annualData.reduce((s, m) => s + m.loanPayments, 0))}</td></tr>`;
 
-        // Individual loan items
+        // Individual loan items (per-month amounts from overrides)
         (annualData[0].loanItems || []).forEach(loan => {
           html += `<tr class="year-proj-subrow year-proj-detail"><td class="year-proj-label-col year-proj-detail-label">${App.esc(loan.name || 'Loan')}</td>`;
+          let loanYearTotal = 0;
           annualData.forEach((m, i) => {
             const cur = i === currentMonthIdx ? 'year-proj-current' : '';
-            html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(loan.monthlyPayment || 0)}</td>`;
+            const amt = API.getLoanFaturaAmount(loan.id, m.month, loan.monthlyPayment);
+            loanYearTotal += amt;
+            html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${Fmt.compact(amt)}</td>`;
           });
-          html += `<td class="year-proj-total-col">${Fmt.compact((loan.monthlyPayment || 0) * 12)}</td></tr>`;
+          html += `<td class="year-proj-total-col">${Fmt.compact(loanYearTotal)}</td></tr>`;
         });
       }
     }
