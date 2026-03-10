@@ -64,7 +64,19 @@ const Dashboard = (() => {
       const subscriptions = API.getSubscriptions().filter(s => s.active !== false);
       const installmentItems = API.getMonthlyInstallmentItems(App.state.activeMonth);
       const loans = API.getLoans();
-      renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems, loans);
+
+      // CC fatura amounts for the active month (already included in s.totalExpenses)
+      const ccBillsTotal = s.byCategory?.credit_cards || 0;
+      const faturas = API.getFaturas();
+      const ccBillItems = cards.map(card => {
+        const fatura = faturas.find(f => f.cardId === card.id && f.month === App.state.activeMonth);
+        const now0 = new Date();
+        const isCurrentOrFuture = App.state.activeMonth >= `${now0.getFullYear()}-${String(now0.getMonth()+1).padStart(2,'0')}`;
+        const amt = fatura ? fatura.amount : (isCurrentOrFuture ? (card.currentBalance || 0) : 0);
+        return { name: card.name || card.brand || 'Card', amount: amt, dueDay: card.dueDay };
+      }).filter(item => item.amount > 0);
+
+      renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems, loans, ccBillsTotal, ccBillItems);
     } catch (e) {
       container.innerHTML = `
         <div class="empty-state">
@@ -110,7 +122,9 @@ const Dashboard = (() => {
   }
 
   // ── "Live on the 15th" hero card ───────────────────────────
-  function renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans, cards, activeMonth) {
+  function renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans, cards, activeMonth, ccBillsTotal) {
+    ccBillsTotal = ccBillsTotal || 0;
+    const trackedExpenses = expenses - ccBillsTotal; // transaction expenses without CC bills
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
     const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
@@ -147,12 +161,12 @@ const Dashboard = (() => {
               <div class="stat-value" style="font-size:18px;color:var(--text-secondary)">${Fmt.percent(savingsRate)}</div>
             </div>
           </div>
-          ${totalCommitted > 0 ? `
+          ${totalCommitted > 0 || ccBillsTotal > 0 ? `
           <div style="margin-top:var(--space-sm);font-size:11px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">
-            <span>Expenses: ${Fmt.compact(expenses)}</span>
+            <span>Expenses: ${Fmt.compact(trackedExpenses)}</span>
+            ${ccBillsTotal > 0 ? `<span>· CC Bills: ${Fmt.compact(ccBillsTotal)}</span>` : ''}
             ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
             ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
-
             ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
           </div>
           ` : ''}
@@ -255,9 +269,10 @@ const Dashboard = (() => {
             <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${overflowToSavings >= 0 ? 'overflow' : 'deficit'}</div>
           </div>
         </div>
-        ${totalCommitted > 0 ? `
+        ${totalCommitted > 0 || ccBillsTotal > 0 ? `
         <div style="margin-top:var(--space-sm);padding-top:var(--space-sm);border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">
-          <span>Tracked: ${Fmt.compact(expenses)}</span>
+          <span>Tracked: ${Fmt.compact(trackedExpenses)}</span>
+          ${ccBillsTotal > 0 ? `<span>· CC Bills: ${Fmt.compact(ccBillsTotal)}</span>` : ''}
           ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
           ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
           ${loanTotal > 0 ? `<span>· Loans: ${Fmt.compact(loanTotal)}</span>` : ''}
@@ -268,8 +283,10 @@ const Dashboard = (() => {
   }
 
   // ── Cash flow checkpoints card ─────────────────────────────
-  function renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans, activeMonth) {
+  function renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans, activeMonth, ccBillsTotal) {
     if (!profile.salary || profile.salary === 0) return '';
+    ccBillsTotal = ccBillsTotal || 0;
+    const trackedExpenses = expenses - ccBillsTotal;
 
     const sched = computeIncomeSchedule(profile);
     const { adiantamento, salario30, advanceDay, salaryDay } = sched;
@@ -332,10 +349,19 @@ const Dashboard = (() => {
           <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
             <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
             <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
-              <span style="font-size:11px;color:var(--text-muted)">− Month expenses</span>
-              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(expenses)}</span>
+              <span style="font-size:11px;color:var(--text-muted)">− Tracked expenses</span>
+              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(trackedExpenses)}</span>
             </div>
           </div>
+          ${ccBillsTotal > 0 ? `
+          <div style="display:flex;align-items:stretch;gap:var(--space-sm);padding:2px 0">
+            <div style="width:8px;display:flex;justify-content:center"><div style="width:1px;background:var(--border);flex:1"></div></div>
+            <div style="flex:1;display:flex;justify-content:space-between;align-items:center;padding:4px 0">
+              <span style="font-size:11px;color:var(--text-muted)">− CC bills (faturas)</span>
+              <span style="font-size:11px;color:var(--red);font-family:var(--font-mono)">-${Fmt.compact(ccBillsTotal)}</span>
+            </div>
+          </div>
+          ` : ''}
 
           <!-- After 15th -->
           <div style="display:flex;align-items:center;gap:var(--space-sm);padding:var(--space-xs) 0">
@@ -476,13 +502,15 @@ const Dashboard = (() => {
     `;
   }
 
-  function renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems, loans) {
+  function renderFull(container, s, h, accounts, cards, categories, patrimonio, subscriptions, installmentItems, loans, ccBillsTotal, ccBillItems) {
     Object.values(charts).forEach(c => c?.destroy());
     charts = {};
 
     const income   = s.totalIncome   || 0;
     const expenses = s.totalExpenses || 0;
     const cats     = { ...(s.byCategory || {}) };
+    ccBillsTotal = ccBillsTotal || 0;
+    ccBillItems = ccBillItems || [];
 
     const now = new Date();
     const [y, m] = App.state.activeMonth.split('-').map(Number);
@@ -514,10 +542,10 @@ const Dashboard = (() => {
       </div>
 
       <!-- 1. Live on the 15th hero -->
-      ${renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans, cards, App.state.activeMonth)}
+      ${renderLive15Card(expenses, income, profile, isCurrentMonth, h, subscriptions, installmentItems, loans, cards, App.state.activeMonth, ccBillsTotal)}
 
       <!-- 2. Cash flow checkpoints -->
-      ${renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans, App.state.activeMonth)}
+      ${renderCashFlowCard(expenses, income, profile, accounts, cards, subscriptions, installmentItems, isCurrentMonth, loans, App.state.activeMonth, ccBillsTotal)}
 
       <!-- 3. Account balances -->
       ${renderAccountsRow(accounts, cards)}
@@ -525,8 +553,8 @@ const Dashboard = (() => {
       <!-- 4. Net worth teaser -->
       ${renderNetWorthTeaser(patrimonio, accounts, cards)}
 
-      <!-- 5. Monthly commitments (subscriptions + installments + loans) -->
-      ${renderMonthlyCommitmentsCard(subscriptions, installmentItems, loans)}
+      <!-- 5. Monthly commitments (subscriptions + installments + loans + CC bills) -->
+      ${renderMonthlyCommitmentsCard(subscriptions, installmentItems, loans, ccBillsTotal, ccBillItems)}
 
       <!-- 6. Budget progress -->
       ${renderBudgetSection(cats, categories, subscriptions, installmentItems)}
@@ -608,16 +636,19 @@ const Dashboard = (() => {
   // ── Monthly Commitments card ───────────────────────────────
   // Shows fixed monthly subscriptions + installment items for this month.
   // These are "committed" costs before any tracked transaction.
-  function renderMonthlyCommitmentsCard(subscriptions, installmentItems, loans) {
+  function renderMonthlyCommitmentsCard(subscriptions, installmentItems, loans, ccBillsTotal, ccBillItems) {
+    ccBillsTotal = ccBillsTotal || 0;
+    ccBillItems = ccBillItems || [];
     const hasSubs   = subscriptions && subscriptions.length > 0;
     const hasInsts  = installmentItems && installmentItems.length > 0;
     const hasLoans  = loans && loans.length > 0;
-    if (!hasSubs && !hasInsts && !hasLoans) return '';
+    const hasCCBills = ccBillItems.length > 0;
+    if (!hasSubs && !hasInsts && !hasLoans && !hasCCBills) return '';
 
     const subsTotal = (subscriptions || []).reduce((s, sub) => s + (sub.amount || 0), 0);
     const instTotal = (installmentItems || []).reduce((s, i) => s + (i.amount || 0), 0);
     const loanTotal = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
-    const totalCommitted = subsTotal + instTotal + loanTotal;
+    const totalCommitted = subsTotal + instTotal + loanTotal + ccBillsTotal;
 
     return `
       <div class="card" style="margin-bottom:var(--space-md)">
@@ -671,6 +702,22 @@ const Dashboard = (() => {
           <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px">
             <span style="color:var(--text-secondary)">Loans total</span>
             <span style="color:var(--red);font-family:var(--font-mono)">${Fmt.compact(loanTotal)}</span>
+          </div>
+        ` : ''}
+
+        ${hasCCBills ? `
+          <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;${hasSubs || hasInsts || hasLoans ? 'margin-top:var(--space-md)' : ''}">CC Bills (Faturas)</div>
+          ${ccBillItems.map(item => `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:18px;width:24px;text-align:center;flex-shrink:0">💳</span>
+              <span style="flex:1;font-size:13px">${App.esc(item.name)}</span>
+              ${item.dueDay ? `<span style="font-size:10px;color:var(--text-muted)">due day ${item.dueDay}</span>` : ''}
+              <span style="font-size:13px;font-weight:600;font-family:var(--font-mono);color:var(--red)">-${Fmt.compact(item.amount)}</span>
+            </div>
+          `).join('')}
+          <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px">
+            <span style="color:var(--text-secondary)">CC Bills total</span>
+            <span style="color:var(--red);font-family:var(--font-mono)">${Fmt.compact(ccBillsTotal)}</span>
           </div>
         ` : ''}
 
