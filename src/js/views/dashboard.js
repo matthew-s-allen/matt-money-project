@@ -149,7 +149,7 @@ const Dashboard = (() => {
           </div>
           ${totalCommitted > 0 ? `
           <div style="margin-top:var(--space-sm);font-size:11px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap">
-            <span>Tracked: ${Fmt.compact(expenses)}</span>
+            <span>Expenses: ${Fmt.compact(expenses)}</span>
             ${subsTotal > 0 ? `<span>· Subs: ${Fmt.compact(subsTotal)}</span>` : ''}
             ${instTotal > 0 ? `<span>· Parcelas: ${Fmt.compact(instTotal)}</span>` : ''}
 

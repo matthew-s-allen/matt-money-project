@@ -108,9 +108,12 @@ const API = (() => {
     // Include credit card faturas (bills) as expenses
     const faturas = getFaturas();
     const cards = Store.data.getCreditCards();
+    const now0 = new Date();
+    const isCurrentOrFutureMonth = month >= `${now0.getFullYear()}-${String(now0.getMonth()+1).padStart(2,'0')}`;
     (cards || []).forEach(card => {
       const fatura = faturas.find(f => f.cardId === card.id && f.month === month);
-      const cardAmt = fatura ? fatura.amount : (card.currentBalance || 0);
+      // Only fall back to currentBalance for current/future month; for past months only count manual faturas
+      const cardAmt = fatura ? fatura.amount : (isCurrentOrFutureMonth ? (card.currentBalance || 0) : 0);
       if (cardAmt > 0) {
         expenses += cardAmt;
         byCat['credit_cards'] = (byCat['credit_cards'] || 0) + cardAmt;
@@ -878,9 +881,10 @@ Critical extraction rules:
       });
 
       // Include credit card faturas (bills) as expenses
+      // Only use currentBalance fallback for current month; for other months, only count manual faturas
       (aoCards || []).forEach(card => {
         const fatura = aoFaturas.find(f => f.cardId === card.id && f.month === monthKey);
-        const cardAmt = fatura ? fatura.amount : (card.currentBalance || 0);
+        const cardAmt = fatura ? fatura.amount : (isCurrent ? (card.currentBalance || 0) : 0);
         if (cardAmt > 0) actualExpenses += cardAmt;
       });
 
