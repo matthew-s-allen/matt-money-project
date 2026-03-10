@@ -882,10 +882,14 @@ Critical extraction rules:
 
       // Include credit card faturas (bills) as expenses
       // Only use currentBalance fallback for current month; for other months, only count manual faturas
+      let ccBillsMonth = 0;
       (aoCards || []).forEach(card => {
         const fatura = aoFaturas.find(f => f.cardId === card.id && f.month === monthKey);
         const cardAmt = fatura ? fatura.amount : (isCurrent ? (card.currentBalance || 0) : 0);
-        if (cardAmt > 0) actualExpenses += cardAmt;
+        if (cardAmt > 0) {
+          actualExpenses += cardAmt;
+          ccBillsMonth += cardAmt;
+        }
       });
 
       // Installments for this month
@@ -913,6 +917,8 @@ Critical extraction rules:
         month: monthKey,
         isPast, isCurrent, isFuture,
         actualIncome, actualExpenses,
+        ccBills: ccBillsMonth,
+        trackedExpenses: actualExpenses - ccBillsMonth,
         subscriptions: subsTotal,
         subscriptionItems: subs,
         installments: instTotal,
