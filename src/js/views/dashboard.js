@@ -1272,13 +1272,34 @@ const Dashboard = (() => {
       html += `<td class="year-proj-total-col">${Fmt.compact(b.decimoTerceiroNet)}</td></tr>`;
     }
 
-    // ── Expenses row
-    html += `<tr class="year-proj-row"><td class="year-proj-label-col">Expenses</td>`;
+    // ── Expenses row (expandable)
+    const hasCCBillsInYear = annualData.some(m => (m.ccBills || 0) > 0);
+    html += `<tr class="year-proj-row ${hasCCBillsInYear ? 'year-proj-clickable' : ''}" ${hasCCBillsInYear ? 'onclick="Dashboard.toggleSection(\'expenses\')"' : ''}>
+      <td class="year-proj-label-col">${hasCCBillsInYear ? arrow('expenses') + ' ' : ''}Expenses</td>`;
     annualData.forEach((m, i) => {
       const cur = i === currentMonthIdx ? 'year-proj-current' : '';
       html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}" style="color:var(--red)">${m.actualExpenses > 0 ? Fmt.compact(m.actualExpenses) : '—'}</td>`;
     });
     html += `<td class="year-proj-total-col" style="color:var(--red)">${Fmt.compact(totalExpenses)}</td></tr>`;
+
+    // Expenses expanded details (tracked vs CC bills)
+    if (expandedSections.expenses && hasCCBillsInYear) {
+      html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">Tracked</td>`;
+      annualData.forEach((m, i) => {
+        const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+        const tracked = (m.trackedExpenses || 0);
+        html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${tracked > 0 ? Fmt.compact(tracked) : '—'}</td>`;
+      });
+      html += `<td class="year-proj-total-col">${Fmt.compact(annualData.reduce((s, m) => s + (m.trackedExpenses || 0), 0))}</td></tr>`;
+
+      html += `<tr class="year-proj-subrow"><td class="year-proj-label-col year-proj-sub-label">CC Bills</td>`;
+      annualData.forEach((m, i) => {
+        const cur = i === currentMonthIdx ? 'year-proj-current' : '';
+        const cc = (m.ccBills || 0);
+        html += `<td class="${m.isFuture ? 'year-proj-future' : ''} ${cur}">${cc > 0 ? Fmt.compact(cc) : '—'}</td>`;
+      });
+      html += `<td class="year-proj-total-col">${Fmt.compact(annualData.reduce((s, m) => s + (m.ccBills || 0), 0))}</td></tr>`;
+    }
 
     // ── Committed row (expandable)
     html += `<tr class="year-proj-row year-proj-clickable" onclick="Dashboard.toggleSection('committed')">
