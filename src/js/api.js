@@ -105,13 +105,16 @@ const API = (() => {
       }
     });
 
-    // Include credit card faturas (bills) as expenses
-    const faturas = getFaturas();
+    // Include credit card faturas (bills) as expenses — shifted to payment month
+    const faturas = getFaturas().filter(f => f.cardId); // only card faturas
     const cards = Store.data.getCreditCards();
     const now0 = new Date();
-    const isCurrentOrFutureMonth = month >= `${now0.getFullYear()}-${String(now0.getMonth()+1).padStart(2,'0')}`;
+    const currentMonthKey = `${now0.getFullYear()}-${String(now0.getMonth()+1).padStart(2,'0')}`;
+    const isCurrentOrFutureMonth = month >= currentMonthKey;
     (cards || []).forEach(card => {
-      const fatura = faturas.find(f => f.cardId === card.id && f.month === month);
+      if (card.cardType === 'voucher') return; // vouchers don't have faturas
+      // Find fatura whose payment month matches the requested month
+      const fatura = faturas.find(f => f.cardId === card.id && getPaymentMonth(f.month, card) === month);
       // Only fall back to currentBalance for current/future month; for past months only count manual faturas
       const cardAmt = fatura ? fatura.amount : (isCurrentOrFutureMonth ? (card.currentBalance || 0) : 0);
       if (cardAmt > 0) {
@@ -158,20 +161,23 @@ const API = (() => {
       else hist[mo].expenses += amt;
     });
 
-    // Include credit card faturas in each month's expenses
-    const histFaturas = getFaturas();
+    // Include credit card faturas in each month's expenses — shifted to payment month
+    const histFaturas = getFaturas().filter(f => f.cardId);
     const histCards = Store.data.getCreditCards();
     for (const [mo, entry] of Object.entries(hist)) {
       (histCards || []).forEach(card => {
-        const fatura = histFaturas.find(f => f.cardId === card.id && f.month === mo);
+        if (card.cardType === 'voucher') return;
+        const fatura = histFaturas.find(f => f.cardId === card.id && getPaymentMonth(f.month, card) === mo);
         const cardAmt = fatura ? fatura.amount : 0;
         if (cardAmt > 0) entry.expenses += cardAmt;
       });
     }
-    // For months with no transactions but with faturas, add them
+    // For months with no transactions but with faturas, add them (using payment month)
     histFaturas.forEach(f => {
-      if (!hist[f.month]) {
-        hist[f.month] = { month: f.month, income: 0, expenses: f.amount || 0 };
+      const card = (histCards || []).find(c => c.id === f.cardId);
+      const payMo = getPaymentMonth(f.month, card);
+      if (!hist[payMo]) {
+        hist[payMo] = { month: payMo, income: 0, expenses: f.amount || 0 };
       }
     });
 
@@ -606,6 +612,18 @@ Critical extraction rules:
     return { success: true };
   }
 
+  // ── Payment Month Helper ─────────────────────────────────────
+
+  function getPaymentMonth(billingMonth, card) {
+    if (!card || card.cardType === 'voucher') return billingMonth;
+    if (card.dueDay && card.closingDay && card.dueDay < card.closingDay) {
+      const [y, m] = billingMonth.split('-').map(Number);
+      const d = new Date(y, m, 1); // m is 1-based, so Date(y, m, 1) = 1st of next month
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return billingMonth;
+  }
+
   // ── Manual Faturas (per card per month) ──────────────────────
 
   function getFaturas() {
@@ -677,6 +695,27 @@ Critical extraction rules:
     }
 
     return faturas;
+  }
+
+  // ── Loan Faturas (per loan per month overrides) ──────────────
+
+  function setLoanFatura(loanId, month, amount) {
+    const all = getFaturas();
+    const idx = all.findIndex(f => f.loanId === loanId && f.month === month);
+    if (amount === 0 || amount === null || amount === undefined || amount === '') {
+      if (idx >= 0) all.splice(idx, 1);
+    } else {
+      const entry = { loanId, month, amount: parseFloat(amount) || 0 };
+      if (idx >= 0) all[idx] = entry; else all.push(entry);
+    }
+    Store.data.setFaturas(all);
+    Store.cache.invalidateAll();
+  }
+
+  function getLoanFaturaAmount(loanId, month, fallbackMonthlyPayment) {
+    const all = getFaturas();
+    const manual = all.find(f => f.loanId === loanId && f.month === month);
+    return manual ? manual.amount : (fallbackMonthlyPayment || 0);
   }
 
   // ── Accounts ─────────────────────────────────────────────
@@ -851,10 +890,13 @@ Critical extraction rules:
     const subs = getSubscriptions().filter(s => s.active !== false);
     const subsTotal = subs.reduce((s, sub) => s + (sub.amount || 0), 0);
     const loans = Store.data.getLoans();
-    const loansTotal = loans.reduce((s, l) => s + (l.monthlyPayment || 0), 0);
     const allTx = Store.data.getTransactions();
-    const aoFaturas = getFaturas();
+    const aoFaturas = getFaturas().filter(f => f.cardId); // only card faturas
     const aoCards = Store.data.getCreditCards();
+
+    // Voucher cards — their recharges count as income
+    const voucherCards = (aoCards || []).filter(c => c.cardType === 'voucher');
+    const voucherIncome = voucherCards.reduce((s, c) => s + (c.rechargeAmount || 0), 0);
 
     const now = new Date();
     const currentMonth = now.getFullYear() * 12 + now.getMonth(); // absolute month index
@@ -880,11 +922,12 @@ Critical extraction rules:
         else actualExpenses += amt;
       });
 
-      // Include credit card faturas (bills) as expenses
-      // Only use currentBalance fallback for current month; for other months, only count manual faturas
+      // Include credit card faturas (bills) as expenses — shifted to payment month
       let ccBillsMonth = 0;
       (aoCards || []).forEach(card => {
-        const fatura = aoFaturas.find(f => f.cardId === card.id && f.month === monthKey);
+        if (card.cardType === 'voucher') return;
+        // Find fatura whose payment month matches this monthKey
+        const fatura = aoFaturas.find(f => f.cardId === card.id && getPaymentMonth(f.month, card) === monthKey);
         const cardAmt = fatura ? fatura.amount : (isCurrent ? (card.currentBalance || 0) : 0);
         if (cardAmt > 0) {
           actualExpenses += cardAmt;
@@ -895,8 +938,11 @@ Critical extraction rules:
       // Installments for this month
       const instTotal = getMonthlyInstallmentTotal(monthKey);
 
-      // Predicted income: base + 13th salary in applicable months + vacation
-      let predictedIncome = predictedBase;
+      // Per-month loan payments (using overrides or fallback to monthlyPayment)
+      const monthLoansTotal = loans.reduce((s, l) => s + getLoanFaturaAmount(l.id, monthKey, l.monthlyPayment), 0);
+
+      // Predicted income: base + 13th salary in applicable months + vacation + voucher recharges
+      let predictedIncome = predictedBase + voucherIncome;
       const m1 = profile.decimo13Month1 || 11;
       const m2 = profile.decimo13Month2 || 12;
       if ((m + 1) === m1) predictedIncome += breakdown.decimoTerceiroNet / 2;
@@ -908,7 +954,7 @@ Critical extraction rules:
         }
       });
 
-      const committed = subsTotal + instTotal + loansTotal;
+      const committed = subsTotal + instTotal + monthLoansTotal;
       const totalOutflows = actualExpenses + committed;
       const income = actualIncome || 0;
       const surplus = (income > 0 ? income : predictedIncome) - totalOutflows;
@@ -923,8 +969,10 @@ Critical extraction rules:
         subscriptionItems: subs,
         installments: instTotal,
         installmentItems: getMonthlyInstallmentItems(monthKey),
-        loanPayments: loansTotal,
+        loanPayments: monthLoansTotal,
         loanItems: loans,
+        voucherIncome,
+        voucherCards,
         committed,
         totalOutflows,
         predictedIncome,
@@ -953,6 +1001,7 @@ Critical extraction rules:
     calcSalaryBreakdown, calcINSS, calcIRRF,
     getInstallments, upsertInstallment, deleteInstallment,
     getFaturas, setFatura, getFaturasForCard, getFuturasFatura,
+    setLoanFatura, getLoanFaturaAmount, getPaymentMonth,
     getCashFlowMonth, saveCashFlowMonth, addCashFlowExpense, updateCashFlowExpense, deleteCashFlowExpense,
     getAnnualOverview,
     syncBackup, selectBackupFolder, shareBackup, downloadSnapshot, startFresh,

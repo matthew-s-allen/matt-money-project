@@ -26,8 +26,9 @@ const Accounts = (() => {
     const isCurrentMonth = y === now.getFullYear() && m === now.getMonth() + 1;
 
     const totalBankBalance = accounts.reduce((s, a) => s + (a.balance || 0), 0);
-    const totalCardBalance = cards.reduce((s, c) => s + (c.currentBalance || 0), 0);
-    const totalCardLimit   = cards.reduce((s, c) => s + (c.limit || 0), 0);
+    const creditCards      = cards.filter(c => c.cardType !== 'voucher');
+    const totalCardBalance = creditCards.reduce((s, c) => s + (c.currentBalance || 0), 0);
+    const totalCardLimit   = creditCards.reduce((s, c) => s + (c.limit || 0), 0);
     const totalLoanBalance = (loans || []).reduce((s, l) => s + (l.remainingBalance || l.amount || 0), 0);
     const totalLoanPayment = (loans || []).reduce((s, l) => s + (l.monthlyPayment || 0), 0);
 
@@ -143,7 +144,7 @@ const Accounts = (() => {
         ${cards.length > 0 || (loans || []).length > 0 ? renderCardDebtOverview(cards, loans) : ''}
 
         <!-- Future Faturas -->
-        ${cards.length > 0 ? renderFuturasFaturas(cards) : ''}
+        ${(cards.length > 0 || (loans || []).length > 0) ? renderFuturasFaturas(cards, loans) : ''}
 
         <!-- Installments (Parcelas) -->
         ${renderInstallments(cards)}
@@ -211,6 +212,7 @@ const Accounts = (() => {
   // ── Credit card item ──────────────────────────────────────
 
   function renderCardItem(c, allTx) {
+    const isVoucher   = c.cardType === 'voucher';
     const txCount     = allTx.filter(t => t.accountId === c.id).length;
     const monthTxAmt  = allTx.filter(t => t.accountId === c.id && t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const usedPct     = c.limit > 0 ? (c.currentBalance / c.limit * 100) : 0;
@@ -218,15 +220,22 @@ const Accounts = (() => {
 
     return `
       <div class="asset-item" style="cursor:pointer" data-card-id="${c.id}" onclick="Accounts.editCardById('${c.id}')">
-        <div class="asset-icon red">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <div class="asset-icon ${isVoucher ? 'blue' : 'red'}">
+          ${isVoucher
+            ? `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/><path d="M18 12a2 2 0 0 0-2 2c0 1.1.9 2 2 2h4v-4h-4z"/></svg>`
+            : `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`}
         </div>
         <div class="asset-info" style="flex:1;min-width:0">
-          <div class="asset-name">${App.esc(c.name || 'Credit Card')}${c.lastFourDigits ? ' *' + App.esc(c.lastFourDigits) : ''}</div>
-          <div class="asset-sub">
-            ${c.closingDay ? 'Closes ' + c.closingDay : ''}${c.closingDay && txCount ? ' · ' : ''}${txCount ? txCount + ' charges' : ''}${monthTxAmt > 0 ? ' · ' + Fmt.currency(monthTxAmt) : ''}
+          <div class="asset-name">
+            ${App.esc(c.name || (isVoucher ? 'Voucher' : 'Credit Card'))}${c.lastFourDigits ? ' *' + App.esc(c.lastFourDigits) : ''}
+            ${isVoucher ? '<span style="font-size:10px;background:var(--primary-glow);color:var(--primary);padding:1px 6px;border-radius:8px;margin-left:6px">Voucher</span>' : ''}
           </div>
-          ${c.limit > 0 ? `
+          <div class="asset-sub">
+            ${isVoucher
+              ? (c.rechargeDay ? 'Recharges day ' + c.rechargeDay : '') + (c.rechargeAmount ? ' · ' + Fmt.currency(c.rechargeAmount) + '/mo' : '')
+              : (c.closingDay ? 'Closes ' + c.closingDay : '') + (c.closingDay && txCount ? ' · ' : '') + (txCount ? txCount + ' charges' : '') + (monthTxAmt > 0 ? ' · ' + Fmt.currency(monthTxAmt) : '')}
+          </div>
+          ${!isVoucher && c.limit > 0 ? `
             <div style="margin-top:6px">
               <div class="progress-bar-wrap" style="height:4px">
                 <div class="progress-bar-fill" style="width:${Math.min(100, usedPct)}%;background:${usedColor}"></div>
@@ -239,8 +248,8 @@ const Accounts = (() => {
           ` : ''}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:var(--space-sm)">
-          <div class="asset-value negative">${Fmt.currency(c.currentBalance || 0)}</div>
-          ${c.minPayment ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Min: ${Fmt.currency(c.minPayment)}</div>` : ''}
+          <div class="asset-value ${isVoucher ? 'positive' : 'negative'}">${Fmt.currency(c.currentBalance || 0)}</div>
+          ${!isVoucher && c.minPayment ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">Min: ${Fmt.currency(c.minPayment)}</div>` : ''}
         </div>
       </div>
     `;
@@ -330,7 +339,7 @@ const Accounts = (() => {
   // ── Credit card modal ─────────────────────────────────────
 
   function addCard() {
-    openCardModal({ name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', minPayment: '', annualFee: 0, paymentAccountId: '' });
+    openCardModal({ name: '', brand: '', lastFourDigits: '', limit: 0, currentBalance: 0, closingDay: '', dueDay: '', interestRate: '', minPayment: '', annualFee: 0, paymentAccountId: '', cardType: 'credit', rechargeDay: '', rechargeAmount: 0 });
   }
 
   function editCard(c) { openCardModal(c); }
@@ -345,11 +354,19 @@ const Accounts = (() => {
     const accounts = Store.data.getAccounts();
     const modal    = document.createElement('div');
     modal.className = 'modal-overlay';
+    const isVoucher = c.cardType === 'voucher';
     modal.innerHTML = `
       <div class="modal-sheet" style="max-height:85dvh;overflow-y:auto">
         <div class="modal-handle"></div>
         <h2 class="modal-title">${isNew ? 'Add Credit Card' : 'Edit Credit Card'}</h2>
 
+        <div class="form-group">
+          <label class="form-label">Card type</label>
+          <select id="card-type" class="form-input" onchange="document.querySelectorAll('.credit-only').forEach(el=>el.style.display=this.value==='voucher'?'none':'');document.querySelectorAll('.voucher-only').forEach(el=>el.style.display=this.value==='voucher'?'':'none')">
+            <option value="credit" ${!isVoucher ? 'selected' : ''}>Credit Card</option>
+            <option value="voucher" ${isVoucher ? 'selected' : ''}>Voucher Card (VA/VR)</option>
+          </select>
+        </div>
         <div class="form-group">
           <label class="form-label">Card name</label>
           <input type="text" id="card-name" class="form-input" value="${App.esc(c.name || '')}" placeholder="e.g. Nubank Visa" />
@@ -364,7 +381,7 @@ const Accounts = (() => {
             <input type="text" id="card-last4" class="form-input" value="${App.esc(c.lastFourDigits || '')}" placeholder="1234" maxlength="4" inputmode="numeric" />
           </div>
         </div>
-        <div class="grid-2">
+        <div class="grid-2 credit-only" style="${isVoucher ? 'display:none' : ''}">
           <div class="form-group">
             <label class="form-label">Credit limit (R$)</label>
             <input type="number" id="card-limit" class="form-input" value="${c.limit || ''}" placeholder="5000" inputmode="decimal" />
@@ -374,7 +391,21 @@ const Accounts = (() => {
             <input type="number" id="card-balance" class="form-input" value="${c.currentBalance || ''}" placeholder="0.00" step="0.01" inputmode="decimal" />
           </div>
         </div>
-        <div class="grid-2">
+        <div class="grid-2 voucher-only" style="${isVoucher ? '' : 'display:none'}">
+          <div class="form-group">
+            <label class="form-label">Recharge day</label>
+            <input type="number" id="card-recharge-day" class="form-input" value="${c.rechargeDay || ''}" placeholder="1" min="1" max="31" inputmode="numeric" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Recharge amount (R$)</label>
+            <input type="number" id="card-recharge-amount" class="form-input" value="${c.rechargeAmount || ''}" placeholder="800" step="0.01" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="form-group voucher-only" style="${isVoucher ? '' : 'display:none'}">
+          <label class="form-label">Current balance (R$)</label>
+          <input type="number" id="card-voucher-balance" class="form-input" value="${isVoucher ? (c.currentBalance || '') : ''}" placeholder="500" step="0.01" inputmode="decimal" />
+        </div>
+        <div class="grid-2 credit-only" style="${isVoucher ? 'display:none' : ''}">
           <div class="form-group">
             <label class="form-label">Closing day</label>
             <input type="number" id="card-closing" class="form-input" value="${c.closingDay || ''}" placeholder="15" min="1" max="31" inputmode="numeric" />
@@ -384,7 +415,7 @@ const Accounts = (() => {
             <input type="number" id="card-due" class="form-input" value="${c.dueDay || ''}" placeholder="25" min="1" max="31" inputmode="numeric" />
           </div>
         </div>
-        <div class="grid-2">
+        <div class="grid-2 credit-only" style="${isVoucher ? 'display:none' : ''}">
           <div class="form-group">
             <label class="form-label">Interest rate (%/mo)</label>
             <input type="number" id="card-interest" class="form-input" value="${c.interestRate || ''}" placeholder="14.5" step="0.1" inputmode="decimal" />
@@ -394,7 +425,7 @@ const Accounts = (() => {
             <input type="number" id="card-min-payment" class="form-input" value="${c.minPayment || ''}" placeholder="50" inputmode="decimal" />
           </div>
         </div>
-        <div class="grid-2">
+        <div class="grid-2 credit-only" style="${isVoucher ? 'display:none' : ''}">
           <div class="form-group">
             <label class="form-label">Annual fee (R$)</label>
             <input type="number" id="card-annual-fee" class="form-input" value="${c.annualFee || ''}" placeholder="0" inputmode="decimal" />
@@ -420,21 +451,27 @@ const Accounts = (() => {
   }
 
   async function saveCard(existingId, btn) {
+    const cardType         = document.getElementById('card-type').value;
+    const isVoucher        = cardType === 'voucher';
     const name             = document.getElementById('card-name').value.trim();
     const brand            = document.getElementById('card-brand').value.trim();
     const lastFourDigits   = document.getElementById('card-last4').value.trim();
-    const limit            = parseFloat(document.getElementById('card-limit').value) || 0;
-    const currentBalance   = parseFloat(document.getElementById('card-balance').value) || 0;
-    const closingDay       = parseInt(document.getElementById('card-closing').value) || '';
-    const dueDay           = parseInt(document.getElementById('card-due').value) || '';
-    const interestRate     = parseFloat(document.getElementById('card-interest').value) || '';
-    const minPayment       = parseFloat(document.getElementById('card-min-payment').value) || '';
-    const annualFee        = parseFloat(document.getElementById('card-annual-fee').value) || 0;
-    const paymentAccountId = document.getElementById('card-payment-account').value || '';
+    const limit            = isVoucher ? 0 : (parseFloat(document.getElementById('card-limit').value) || 0);
+    const currentBalance   = isVoucher
+      ? (parseFloat(document.getElementById('card-voucher-balance').value) || 0)
+      : (parseFloat(document.getElementById('card-balance').value) || 0);
+    const closingDay       = isVoucher ? '' : (parseInt(document.getElementById('card-closing').value) || '');
+    const dueDay           = isVoucher ? '' : (parseInt(document.getElementById('card-due').value) || '');
+    const interestRate     = isVoucher ? '' : (parseFloat(document.getElementById('card-interest').value) || '');
+    const minPayment       = isVoucher ? '' : (parseFloat(document.getElementById('card-min-payment').value) || '');
+    const annualFee        = isVoucher ? 0 : (parseFloat(document.getElementById('card-annual-fee').value) || 0);
+    const paymentAccountId = isVoucher ? '' : (document.getElementById('card-payment-account').value || '');
+    const rechargeDay      = isVoucher ? (parseInt(document.getElementById('card-recharge-day').value) || '') : '';
+    const rechargeAmount   = isVoucher ? (parseFloat(document.getElementById('card-recharge-amount').value) || 0) : 0;
     if (!name) { App.toast('Please enter a card name', 'error'); return; }
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
-      await API.upsertCreditCard({ id: existingId || undefined, name, brand, lastFourDigits, limit, currentBalance, closingDay, dueDay, interestRate, minPayment, annualFee, paymentAccountId });
+      await API.upsertCreditCard({ id: existingId || undefined, cardType, name, brand, lastFourDigits, limit, currentBalance, closingDay, dueDay, interestRate, minPayment, annualFee, paymentAccountId, rechargeDay, rechargeAmount });
       btn.closest('.modal-overlay').remove();
       App.toast('Credit card saved', 'success');
       render();
@@ -453,10 +490,13 @@ const Accounts = (() => {
 
   // ── Future Faturas — dynamic timeline ────────────────────
 
-  function renderFuturasFaturas(cards) {
+  function renderFuturasFaturas(cards, loans) {
     const now = new Date();
     const installments    = API.getInstallments();
     const allManualFaturas = API.getFaturas();
+    // Only show credit cards (not vouchers) in faturas table
+    const creditCards = cards.filter(c => c.cardType !== 'voucher');
+    const activeLoans = (loans || []).filter(l => (l.remainingBalance || l.amount || 0) > 0);
 
     // Compute how many months to show: cover all active installments, min 12
     let maxMonths = 12;
@@ -472,6 +512,10 @@ const Accounts = (() => {
       if (!fY) continue;
       const diff = (fY - now.getFullYear()) * 12 + (fM - (now.getMonth() + 1)) + 1;
       if (diff > maxMonths) maxMonths = diff;
+    }
+    // Extend for loan durations
+    for (const loan of activeLoans) {
+      if (loan.remainingMonths && loan.remainingMonths > maxMonths) maxMonths = loan.remainingMonths;
     }
 
     // Build month keys
@@ -496,14 +540,14 @@ const Accounts = (() => {
           <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:${80 + months.length * 90}px">
             <thead>
               <tr>
-                <th style="text-align:left;padding:6px 8px;font-weight:600;border-bottom:1px solid var(--border);position:sticky;left:0;z-index:2;background:var(--bg-card);min-width:90px;white-space:nowrap">Card</th>
+                <th style="text-align:left;padding:6px 8px;font-weight:600;border-bottom:1px solid var(--border);position:sticky;left:0;z-index:2;background:var(--bg-card);min-width:90px;white-space:nowrap">Card / Loan</th>
                 ${months.map(mo => `
                   <th style="text-align:center;padding:6px 4px;font-weight:600;border-bottom:1px solid var(--border);min-width:90px;white-space:nowrap;${mo === Fmt.currentMonthKey() ? 'color:var(--primary)' : ''}">${Fmt.monthYear(mo + '-01')}</th>
                 `).join('')}
               </tr>
             </thead>
             <tbody>
-              ${cards.map(card => {
+              ${creditCards.map(card => {
                 const cardFaturas = allManualFaturas.filter(f => f.cardId === card.id);
                 const cardInst    = installments.filter(i => i.cardId === card.id);
                 return `
@@ -540,12 +584,41 @@ const Accounts = (() => {
                   </tr>
                 `;
               }).join('')}
+              ${activeLoans.length > 0 ? `
+              <tr><td colspan="${months.length + 1}" style="padding:4px 8px;font-size:10px;font-weight:600;color:var(--text-muted);border-bottom:1px solid var(--border);background:var(--bg-input)">LOANS</td></tr>
+              ${activeLoans.map(loan => {
+                return `
+                  <tr>
+                    <td style="padding:8px;border-bottom:1px solid var(--border);position:sticky;left:0;z-index:1;background:var(--bg-card)">
+                      <div style="font-weight:500;white-space:nowrap">${App.esc(loan.name || loan.description || 'Loan')}</div>
+                      <div style="font-size:10px;color:var(--text-muted)">${Fmt.compact(loan.monthlyPayment || 0)}/mo</div>
+                    </td>
+                    ${months.map(mo => {
+                      const manualLoan = allManualFaturas.find(f => f.loanId === loan.id && f.month === mo);
+                      const val = manualLoan ? manualLoan.amount : '';
+                      const fallback = loan.monthlyPayment || 0;
+                      const isCurrent = mo === Fmt.currentMonthKey();
+                      return `
+                        <td style="padding:4px;border-bottom:1px solid var(--border);text-align:center${isCurrent ? ';background:var(--primary-glow)' : ''}">
+                          <input type="number" class="form-input fatura-input"
+                            data-loan-id="${loan.id}" data-month="${mo}"
+                            value="${val}"
+                            placeholder="${fallback > 0 ? Fmt.compact(fallback) : '0'}"
+                            style="width:82px;text-align:center;font-size:12px;padding:4px 6px;height:34px"
+                            inputmode="decimal" step="0.01"
+                            onchange="Accounts.saveLoanFatura('${loan.id}','${mo}',this.value)" />
+                        </td>
+                      `;
+                    }).join('')}
+                  </tr>
+                `;
+              }).join('')}` : ''}
               <!-- Totals row -->
               <tr style="font-weight:600;background:var(--bg-input)">
                 <td style="padding:8px;position:sticky;left:0;z-index:1;background:var(--bg-input)">Total</td>
                 ${months.map(mo => {
                   let moTotal = 0;
-                  for (const card of cards) {
+                  for (const card of creditCards) {
                     const manual = allManualFaturas.find(f => f.cardId === card.id && f.month === mo);
                     if (manual) {
                       moTotal += manual.amount;
@@ -559,6 +632,10 @@ const Accounts = (() => {
                       }
                     }
                   }
+                  // Add loan payments
+                  for (const loan of activeLoans) {
+                    moTotal += API.getLoanFaturaAmount(loan.id, mo, loan.monthlyPayment);
+                  }
                   return `<td style="padding:8px 4px;text-align:center;font-family:var(--font-mono);font-size:12px;color:${moTotal > 0 ? 'var(--red)' : 'var(--text-muted)'}">${moTotal > 0 ? Fmt.compact(moTotal) : '—'}</td>`;
                 }).join('')}
               </tr>
@@ -571,6 +648,10 @@ const Accounts = (() => {
 
   function saveFatura(cardId, month, value) {
     API.setFatura(cardId, month, value);
+  }
+
+  function saveLoanFatura(loanId, month, value) {
+    API.setLoanFatura(loanId, month, value);
   }
 
   // ── Installments (Parcelas) ───────────────────────────────
@@ -1025,7 +1106,7 @@ const Accounts = (() => {
     addAccount, editAccount, editAccountById, saveAccount, deleteAccount,
     addCard, editCard, editCardById, saveCard, deleteCard,
     addInstallment, editInstallment, saveInstallment, deleteInstallment,
-    saveFatura,
+    saveFatura, saveLoanFatura,
     addLoan, editLoan, saveLoan, deleteLoanConfirm
   };
 })();
