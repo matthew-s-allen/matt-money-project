@@ -214,15 +214,20 @@
           <span class="form-hint">CDB, Tesouro, FIIs, stocks…</span>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label">Car current market value (R$)</label>
-        <input type="number" id="setup-car-value" class="form-input" placeholder="0" inputmode="decimal" />
-        <span class="form-hint">Check Tabela FIPE for your model/year.</span>
+      <div class="divider-text">Items of Value</div>
+      <p class="setup-step-desc">Assets you own that contribute to your net worth.</p>
+      <div class="setup-quick-add">
+        <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addPatrimonioAsset('Car','\uD83D\uDE97')">&#x1F697; Car</button>
+        <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addPatrimonioAsset('House','\uD83C\uDFE0')">&#x1F3E0; House</button>
+        <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addPatrimonioAsset('Motorcycle','\uD83C\uDFCD')">&#x1F3CD;&#xFE0F; Moto</button>
+        <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addPatrimonioAsset('Land','\uD83C\uDFDE')">&#x1F3DE;&#xFE0F; Land</button>
       </div>
+      <div id="setup-patrimonio-assets-list"></div>
+      <button class="btn btn-ghost btn-sm" onclick="SetupWizard.addPatrimonioAsset('','')" style="width:100%;margin-top:var(--space-xs)">+ Add item</button>
 
       <div style="display:flex;gap:var(--space-md);margin-top:var(--space-lg)">
-        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(3)">← Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(3)">Continue →</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="SetupWizard.back(3)">&#8592; Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="SetupWizard.next(3)">Continue &#8594;</button>
       </div>
     </div>
 

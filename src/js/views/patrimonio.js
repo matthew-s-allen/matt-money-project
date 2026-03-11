@@ -46,16 +46,20 @@ const Patrimonio = (() => {
 
     // Use Sheet data or fall back to profile defaults
     const fgts      = data?.fgts      ?? profile.fgts     ?? 68000;
-    const carValue  = data?.carValue   ?? profile.carValue ?? 50000;
     const savings   = data?.savings    ?? 0;
     const investments = data?.investments ?? 0;
+    const assets    = data?.assets     || [];
+    const assetsTotal = assets.reduce((s, a) => s + (a.value || 0), 0);
+    // Backwards compat: if no assets array but carValue exists, show it
+    const carValue  = assets.length === 0 ? (data?.carValue ?? profile.carValue ?? 0) : 0;
     const debtFromDebts = debts?.reduce((s, d) => s + (d.balance || 0), 0) || 0;
     const debtFromCards = creditCards?.reduce((s, c) => s + (c.currentBalance || 0), 0) || 0;
     const debtFromLoans = (loans || []).reduce((s, l) => s + (l.remainingBalance || l.amount || 0), 0);
     const totalDebt = (debtFromDebts + debtFromCards + debtFromLoans) || 0;
 
-    const bankTotal = (accounts || []).reduce((s, a) => s + (a.balance || 0), 0);
-    const totalAssets      = fgts + carValue + savings + investments + Math.max(0, bankTotal);
+    const bankAccounts = (accounts || []).filter(a => a.type !== 'benefit_card');
+    const bankTotal = bankAccounts.reduce((s, a) => s + (a.balance || 0), 0);
+    const totalAssets      = fgts + carValue + assetsTotal + savings + investments + Math.max(0, bankTotal);
     const netWorth         = totalAssets - totalDebt;
     const netWorthPositive = netWorth >= 0;
 
@@ -122,17 +126,27 @@ const Patrimonio = (() => {
             </div>
           </div>
 
+          ${carValue > 0 ? `
           <div class="asset-item">
             <div class="asset-icon blue">🚗</div>
             <div class="asset-info">
-              <div class="asset-name">VW Up TSI 2018/19</div>
+              <div class="asset-name">Car</div>
               <div class="asset-sub">Depreciates ~10%/yr</div>
             </div>
             <div>
               <div class="asset-value positive">${Fmt.currency(carValue)}</div>
               <div style="font-size:11px;color:var(--text-muted);text-align:right">2026: ${Fmt.compact(carValue*0.9)}</div>
             </div>
-          </div>
+          </div>` : ''}
+
+          ${assets.map(a => `
+          <div class="asset-item">
+            <div class="asset-icon blue">${a.icon || '📦'}</div>
+            <div class="asset-info">
+              <div class="asset-name">${a.name || 'Asset'}</div>
+            </div>
+            <div class="asset-value positive">${Fmt.currency(a.value || 0)}</div>
+          </div>`).join('')}
 
           ${savings > 0 ? `
           <div class="asset-item">
@@ -199,7 +213,8 @@ const Patrimonio = (() => {
           <div class="donut-legend">
             ${[
               { label: 'FGTS',       val: fgts,        color: '#39d353' },
-              { label: 'Car',        val: carValue,     color: '#00a8e8' },
+              ...(carValue > 0 ? [{ label: 'Car', val: carValue, color: '#00a8e8' }] : []),
+              ...assets.map((a, ai) => ({ label: a.name || 'Asset', val: a.value || 0, color: ['#00a8e8','#f472b6','#fb923c','#38bdf8','#a3e635'][ai % 5] })),
               { label: 'Savings',    val: savings,      color: '#a855f7' },
               { label: 'Investments',val: investments,  color: '#ffd600' },
               { label: 'Bank Accounts', val: Math.max(0, bankTotal), color: '#60a5fa' },
@@ -254,7 +269,7 @@ const Patrimonio = (() => {
       </div>
     `;
 
-    drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt, bankTotal);
+    drawPatrimonioDonut(fgts, carValue + assetsTotal, savings, investments, totalDebt, bankTotal);
   }
 
   function renderDebts(debts, creditCards, totalDebt, profile, loans) {
@@ -322,13 +337,13 @@ const Patrimonio = (() => {
     return html;
   }
 
-  function drawPatrimonioDonut(fgts, carValue, savings, investments, totalDebt, bankTotal) {
+  function drawPatrimonioDonut(fgts, assetsVal, savings, investments, totalDebt, bankTotal) {
     const canvas = document.getElementById('patrimonio-donut');
     if (!canvas) return;
 
     const items = [
       { label: 'FGTS',       val: fgts,        color: '#39d353' },
-      { label: 'Car',        val: carValue,     color: '#00a8e8' },
+      { label: 'Assets',     val: assetsVal,    color: '#00a8e8' },
       { label: 'Savings',    val: savings,      color: '#a855f7' },
       { label: 'Investments',val: investments,  color: '#ffd600' },
       { label: 'Bank Accounts', val: Math.max(0, bankTotal || 0), color: '#60a5fa' },
@@ -365,6 +380,7 @@ const Patrimonio = (() => {
   function edit() {
     const profile = Store.profile.get();
     const patrimonio = Store.data.getPatrimonio();
+    const assets = patrimonio.assets || [];
     const modal = document.createElement('div');
     modal.className = 'modal-overlay';
     modal.innerHTML = `
@@ -377,10 +393,6 @@ const Patrimonio = (() => {
           <input type="number" id="edit-fgts" class="form-input" value="${profile.fgts || 68000}" />
         </div>
         <div class="form-group">
-          <label class="form-label">Car current value (R$)</label>
-          <input type="number" id="edit-car" class="form-input" value="${profile.carValue || 50000}" />
-        </div>
-        <div class="form-group">
           <label class="form-label">Liquid savings (R$)</label>
           <input type="number" id="edit-savings" class="form-input" value="${patrimonio.savings || ''}" placeholder="0" />
         </div>
@@ -388,6 +400,11 @@ const Patrimonio = (() => {
           <label class="form-label">Investments (R$)</label>
           <input type="number" id="edit-investments" class="form-input" value="${patrimonio.investments || ''}" placeholder="0" />
         </div>
+        ${assets.map((a, i) => `
+        <div class="form-group">
+          <label class="form-label">${a.icon || ''} ${a.name || 'Asset'} (R$)</label>
+          <input type="number" class="edit-asset-value" data-idx="${i}" class="form-input" value="${a.value || ''}" placeholder="0" />
+        </div>`).join('')}
 
         <div style="display:flex;gap:var(--space-md);margin-top:var(--space-xl)">
           <button class="btn btn-secondary" style="flex:1" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
@@ -402,16 +419,22 @@ const Patrimonio = (() => {
 
   async function saveEdit(btn) {
     const fgts       = parseFloat(document.getElementById('edit-fgts').value) || 0;
-    const carValue   = parseFloat(document.getElementById('edit-car').value) || 0;
     const savings    = parseFloat(document.getElementById('edit-savings').value) || 0;
     const investments= parseFloat(document.getElementById('edit-investments').value) || 0;
+
+    const patrimonio = Store.data.getPatrimonio();
+    const assets = patrimonio.assets ? JSON.parse(JSON.stringify(patrimonio.assets)) : [];
+    document.querySelectorAll('.edit-asset-value').forEach(input => {
+      const idx = parseInt(input.dataset.idx);
+      if (assets[idx]) assets[idx].value = parseFloat(input.value) || 0;
+    });
 
     btn.disabled = true;
     btn.textContent = 'Saving...';
 
     try {
-      await API.updatePatrimonio({ fgts, carValue, savings, investments, updatedAt: new Date().toISOString() });
-      Store.profile.set({ fgts, carValue });
+      await API.updatePatrimonio({ fgts, savings, investments, assets, updatedAt: new Date().toISOString() });
+      Store.profile.set({ fgts });
       btn.closest('.modal-overlay').remove();
       App.toast('Patrimônio updated!', 'success');
       render();

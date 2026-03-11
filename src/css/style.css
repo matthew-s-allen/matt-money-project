@@ -1129,6 +1129,85 @@ input[type="range"]::-moz-range-thumb {
   line-height: 1.5;
 }
 
+/* Setup item card — consistent container for accounts, cards, loans, assets */
+.setup-item-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+/* Setup field micro-label */
+.setup-field-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Consistent remove button */
+.setup-remove-btn {
+  color: var(--red);
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 4px;
+  line-height: 1;
+}
+.setup-remove-btn:hover { opacity: 0.7; }
+
+/* Consistent setup form inputs */
+.setup-screen .form-input {
+  height: 42px;
+  font-size: 14px;
+}
+
+/* Loan/fatura month grid */
+.setup-month-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: var(--space-sm);
+}
+.setup-month-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.setup-month-cell label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.setup-month-cell input {
+  font-size: 13px;
+  padding: 4px 6px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Quick-add asset buttons */
+.setup-quick-add {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: var(--space-sm);
+}
+.setup-quick-add .btn {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
 /* ── Loading ───────────────────────────────────────────────── */
 .skeleton {
   background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
