@@ -96,6 +96,8 @@ const Store = (() => {
     // ── Personal Loans & Debts ────────────────────────────────
     getLoans()             { return raw.get('data_loans', []); },
     setLoans(v)            { raw.set('data_loans', v); },
+    getLoanPayments()      { return raw.get('data_loan_payments', []); },
+    setLoanPayments(v)     { raw.set('data_loan_payments', v); },
 
     // ── Monthly Subscriptions (fixed recurring costs) ──────────
     getSubscriptions()     { return raw.get('data_subscriptions', []); },
@@ -118,6 +120,7 @@ const Store = (() => {
         cashFlow:      data.getCashFlow(),
         subscriptions: data.getSubscriptions(),
         loans:         data.getLoans(),
+        loanPayments:  data.getLoanPayments(),
         setupDone:     data.isSetupDone(),
         profile:       profile.get(),
         config:        config.get()
@@ -138,6 +141,7 @@ const Store = (() => {
       if (blob.faturas)       data.setFaturas(blob.faturas);
       if (blob.cashFlow)      data.setCashFlow(blob.cashFlow);
       if (blob.loans)         data.setLoans(blob.loans);
+      if (blob.loanPayments)  data.setLoanPayments(blob.loanPayments);
       if (blob.subscriptions) data.setSubscriptions(blob.subscriptions);
       if (blob.setupDone != null) data.setSetupDone(blob.setupDone);
       if (blob.profile)  profile.set(blob.profile);

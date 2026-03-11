@@ -19,15 +19,22 @@ const AddTransaction = (() => {
   function buildAccountOptions() {
     const accounts = Store.data.getAccounts();
     const cards = Store.data.getCreditCards();
+    const bankAccounts = accounts.filter(a => a.type !== 'benefit_card');
+    const benefitAccounts = accounts.filter(a => a.type === 'benefit_card');
     let html = '<option value="">Select account or card</option>';
-    if (accounts.length) {
+    if (bankAccounts.length) {
       html += '<optgroup label="Bank Accounts">';
-      accounts.forEach(a => { html += `<option value="${a.id}">${a.name}${a.bank ? ' (' + a.bank + ')' : ''}</option>`; });
+      bankAccounts.forEach(a => { html += `<option value="${a.id}">${esc(a.name)}${a.bank ? ' (' + esc(a.bank) + ')' : ''}</option>`; });
+      html += '</optgroup>';
+    }
+    if (benefitAccounts.length) {
+      html += '<optgroup label="Benefit Cards">';
+      benefitAccounts.forEach(a => { html += `<option value="${a.id}">${esc(a.name)}</option>`; });
       html += '</optgroup>';
     }
     if (cards.length) {
       html += '<optgroup label="Credit Cards">';
-      cards.forEach(c => { html += `<option value="${c.id}">${c.name}${c.brand ? ' (' + c.brand + ')' : ''}</option>`; });
+      cards.forEach(c => { html += `<option value="${c.id}">${esc(c.name)}${c.brand ? ' (' + esc(c.brand) + ')' : ''}</option>`; });
       html += '</optgroup>';
     }
     return html;

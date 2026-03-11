@@ -723,6 +723,8 @@ const SetupWizard = (() => {
   let deductionsList = [];
   let benefitsList = [];
   let vacationPlans = [];
+  let patrimonioAssets = [];
+  let loanPayments = [];
   let incomeChart = null;
 
   const STEP_LABELS = ['Profile', 'Salary', 'Patrimônio', 'Accounts', 'Cards', 'Loans', 'Budgets'];
@@ -734,6 +736,7 @@ const SetupWizard = (() => {
     accounts = Store.data.getAccounts();
     cards = Store.data.getCreditCards();
     loans = Store.data.getLoans();
+    loanPayments = Store.data.getLoanPayments();
 
     deductionsList = profile.deductionsList && profile.deductionsList.length
       ? JSON.parse(JSON.stringify(profile.deductionsList))
@@ -746,8 +749,8 @@ const SetupWizard = (() => {
     benefitsList = profile.benefitsList && profile.benefitsList.length
       ? JSON.parse(JSON.stringify(profile.benefitsList))
       : [
-          { id: 'va', name: 'Vale Alimentacao', type: 'fixed', amount: profile.benefitVA || 0 },
-          { id: 'vr', name: 'Vale Refeicao', type: 'fixed', amount: profile.benefitVR || 0 }
+          { id: 'va', name: 'Vale Alimentacao', type: 'fixed', amount: profile.benefitVA || 0, reloadDay: 1, provider: '' },
+          { id: 'vr', name: 'Vale Refeicao', type: 'fixed', amount: profile.benefitVR || 0, reloadDay: 1, provider: '' }
         ];
 
     vacationPlans = profile.vacationPlans ? JSON.parse(JSON.stringify(profile.vacationPlans)) : [];
@@ -780,16 +783,17 @@ const SetupWizard = (() => {
     const goalEl = document.getElementById('setup-savings-goal');
     const yearsEl = document.getElementById('setup-target-years');
     const fgtsEl = document.getElementById('setup-fgts');
-    const carEl = document.getElementById('setup-car-value');
     const savEl = document.getElementById('setup-savings');
     const invEl = document.getElementById('setup-investments');
     if (goalEl) goalEl.value = profile.savingsGoal || '';
     if (yearsEl) yearsEl.value = profile.targetYears || '';
     if (fgtsEl) fgtsEl.value = profile.fgts || '';
-    if (carEl) carEl.value = profile.carValue || '';
     const patrimonio = Store.data.getPatrimonio();
     if (savEl) savEl.value = patrimonio.savings || '';
     if (invEl) invEl.value = patrimonio.investments || '';
+    patrimonioAssets = patrimonio.assets && patrimonio.assets.length
+      ? JSON.parse(JSON.stringify(patrimonio.assets))
+      : (patrimonio.carValue || profile.carValue ? [{ id: crypto.randomUUID(), name: 'Car', icon: '\uD83D\uDE97', value: patrimonio.carValue || profile.carValue || 0 }] : []);
 
     const importEl = document.getElementById('setup-import-file');
     if (importEl && !importEl._handlerBound) {
@@ -852,7 +856,7 @@ const SetupWizard = (() => {
   }
 
   let paymentSchedule = [
-    { label: 'Adiantamento', day: 15, percent: 40, isFixed: false, amount: 0 },
+    { label: 'Adiantamento', day: 15, percent: 30, isFixed: false, amount: 0 },
     { label: 'Salario', day: 30, percent: 60, isFixed: false, amount: 0 }
   ];
 
@@ -864,7 +868,7 @@ const SetupWizard = (() => {
       paymentSchedule = [{ label: 'Salario', day: 30, percent: 100, isFixed: false, amount: 0 }];
     } else if (freq === 'quinzenal') {
       paymentSchedule = existingSchedule && existingSchedule.length === 2 ? existingSchedule : [
-        { label: 'Adiantamento', day: 15, percent: 40, isFixed: false, amount: 0 },
+        { label: 'Adiantamento', day: 15, percent: 30, isFixed: false, amount: 0 },
         { label: 'Salario', day: 30, percent: 60, isFixed: false, amount: 0 }
       ];
     } else {
@@ -892,14 +896,14 @@ const SetupWizard = (() => {
             '</div>' +
           '</div>' +
           '<div style="display:flex;gap:4px;margin-bottom:6px">' +
-            '<button class="seg-btn ' + (!p.isFixed ? 'active' : '') + '" style="flex:1;padding:4px 8px;font-size:11px" onclick="SetupWizard.toggleSchedFixed(' + i + ',false)">% do net</button>' +
+            '<button class="seg-btn ' + (!p.isFixed ? 'active' : '') + '" style="flex:1;padding:4px 8px;font-size:11px" onclick="SetupWizard.toggleSchedFixed(' + i + ',false)">% do bruto</button>' +
             '<button class="seg-btn ' + (p.isFixed ? 'active' : '') + '" style="flex:1;padding:4px 8px;font-size:11px" onclick="SetupWizard.toggleSchedFixed(' + i + ',true)">R$ fixo</button>' +
           '</div>' +
           (p.isFixed
             ? '<input type="number" class="form-input sched-amount" value="' + (p.amount || '') + '" placeholder="0.00" inputmode="decimal" style="font-size:13px" oninput="SetupWizard.savePaymentSchedule()" />'
             : '<div style="display:flex;align-items:center;gap:6px">' +
                 '<input type="number" class="form-input sched-percent" value="' + p.percent + '" min="1" max="100" style="width:60px;font-size:13px;text-align:center" inputmode="numeric" oninput="SetupWizard.savePaymentSchedule()" />' +
-                '<span style="font-size:12px;color:var(--text-muted)">% net =</span>' +
+                '<span style="font-size:12px;color:var(--text-muted)">% bruto =</span>' +
                 '<span id="sched-calc-' + i + '" style="font-size:13px;font-weight:600;color:var(--green)"></span>' +
               '</div>'
           ) +
@@ -952,12 +956,10 @@ const SetupWizard = (() => {
 
   function updatePaymentScheduleAmounts() {
     const gross = getCurrentGross();
-    const b = gross ? API.calcSalaryBreakdown({ ...Store.profile.get(), salary: gross, ...buildLegacyDeductFields() }) : null;
-    const net = b ? b.netSalary : 0;
     paymentSchedule.forEach((p, i) => {
       const el = document.getElementById('sched-calc-' + i);
       if (el) {
-        const val = p.isFixed ? p.amount : (net * (p.percent / 100));
+        const val = p.isFixed ? p.amount : (gross * (p.percent / 100));
         el.textContent = Fmt.currency(val);
       }
     });
@@ -1078,7 +1080,7 @@ const SetupWizard = (() => {
             : '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none">R$</span><input type="number" class="form-input" value="' + (d.amount||'') + '" placeholder="0" style="font-size:13px;padding-left:24px" inputmode="decimal" oninput="SetupWizard.saveDeduction(' + i + ',\'amount\',this.value)" />'
           ) +
         '</div>' +
-        '<button onclick="SetupWizard.removeDeduction(' + i + ')" style="color:var(--red);background:none;border:none;font-size:18px;cursor:pointer;flex-shrink:0;padding:2px 4px">x</button>' +
+        '<button onclick="SetupWizard.removeDeduction(' + i + ')" class="setup-remove-btn">x</button>' +
       '</div>'
     ).join('');
     updateSalaryPreview();
@@ -1106,13 +1108,25 @@ const SetupWizard = (() => {
     const el = document.getElementById('setup-benefits-list');
     if (!el) return;
     el.innerHTML = benefitsList.map((b, i) =>
-      '<div style="display:flex;gap:var(--space-sm);align-items:center;margin-bottom:8px">' +
-        '<input type="text" class="form-input" value="' + App.esc(b.name) + '" placeholder="Beneficio" style="flex:1;min-width:0;font-size:13px" oninput="SetupWizard.saveBenefit(' + i + ',\'name\',this.value)" />' +
-        '<div style="position:relative;width:100px;flex-shrink:0">' +
-          '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none">R$</span>' +
-          '<input type="number" class="form-input" value="' + (b.amount||'') + '" placeholder="0" style="font-size:13px;padding-left:24px" inputmode="decimal" oninput="SetupWizard.saveBenefit(' + i + ',\'amount\',this.value)" />' +
+      '<div class="setup-item-card">' +
+        '<div style="display:flex;gap:var(--space-sm);align-items:center">' +
+          '<input type="text" class="form-input" value="' + App.esc(b.name) + '" placeholder="Beneficio" style="flex:1;min-width:0" oninput="SetupWizard.saveBenefit(' + i + ',\'name\',this.value)" />' +
+          '<div style="position:relative;width:100px;flex-shrink:0">' +
+            '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:11px;pointer-events:none">R$</span>' +
+            '<input type="number" class="form-input" value="' + (b.amount||'') + '" placeholder="0" style="padding-left:24px" inputmode="decimal" oninput="SetupWizard.saveBenefit(' + i + ',\'amount\',this.value)" />' +
+          '</div>' +
+          '<button onclick="SetupWizard.removeBenefit(' + i + ')" class="setup-remove-btn" aria-label="Remove">x</button>' +
         '</div>' +
-        '<button onclick="SetupWizard.removeBenefit(' + i + ')" style="color:var(--red);background:none;border:none;font-size:18px;cursor:pointer;flex-shrink:0;padding:2px 4px">x</button>' +
+        '<div style="display:flex;gap:var(--space-sm);align-items:center;margin-top:6px">' +
+          '<div style="flex:1;min-width:0">' +
+            '<div class="setup-field-label">Provider</div>' +
+            '<input type="text" class="form-input" value="' + App.esc(b.provider||'') + '" placeholder="e.g. Swile, Alelo" oninput="SetupWizard.saveBenefit(' + i + ',\'provider\',this.value)" />' +
+          '</div>' +
+          '<div style="width:80px;flex-shrink:0">' +
+            '<div class="setup-field-label">Reload day</div>' +
+            '<input type="number" class="form-input" value="' + (b.reloadDay||1) + '" min="1" max="31" style="text-align:center" inputmode="numeric" oninput="SetupWizard.saveBenefit(' + i + ',\'reloadDay\',this.value)" />' +
+          '</div>' +
+        '</div>' +
       '</div>'
     ).join('');
     updateSalaryPreview();
@@ -1121,12 +1135,13 @@ const SetupWizard = (() => {
   function saveBenefit(idx, field, val) {
     if (!benefitsList[idx]) return;
     if (field === 'amount') val = parseFloat(val) || 0;
+    else if (field === 'reloadDay') val = parseInt(val) || 1;
     benefitsList[idx][field] = val;
     updateSalaryPreview(); buildIncomeChart();
   }
 
   function addBenefit() {
-    benefitsList.push({ id: 'custom_' + crypto.randomUUID(), name: '', type: 'fixed', amount: 0 });
+    benefitsList.push({ id: 'custom_' + crypto.randomUUID(), name: '', type: 'fixed', amount: 0, reloadDay: 1, provider: '' });
     renderBenefits();
   }
 
@@ -1197,6 +1212,40 @@ const SetupWizard = (() => {
     } else { hint.style.display = 'none'; }
   }
 
+  function renderPatrimonioAssets() {
+    const el = document.getElementById('setup-patrimonio-assets-list');
+    if (!el) return;
+    el.innerHTML = patrimonioAssets.map((a, i) =>
+      '<div class="setup-item-card">' +
+        '<div style="display:flex;gap:var(--space-sm);align-items:center">' +
+          '<input type="text" class="form-input" value="' + App.esc(a.icon||'') + '" placeholder="\uD83D\uDCE6" style="width:44px;text-align:center;font-size:18px;padding:4px" oninput="SetupWizard.savePatrimonioAsset(' + i + ',\'icon\',this.value)" />' +
+          '<input type="text" class="form-input" value="' + App.esc(a.name||'') + '" placeholder="Item name" style="flex:1;min-width:0" oninput="SetupWizard.savePatrimonioAsset(' + i + ',\'name\',this.value)" />' +
+          '<div style="position:relative;width:120px;flex-shrink:0">' +
+            '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px;pointer-events:none">R$</span>' +
+            '<input type="number" class="form-input" value="' + (a.value||'') + '" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:28px" oninput="SetupWizard.savePatrimonioAsset(' + i + ',\'value\',this.value)" />' +
+          '</div>' +
+          '<button onclick="SetupWizard.removePatrimonioAsset(' + i + ')" class="setup-remove-btn" aria-label="Remove">x</button>' +
+        '</div>' +
+      '</div>'
+    ).join('');
+  }
+
+  function addPatrimonioAsset(name, icon) {
+    patrimonioAssets.push({ id: crypto.randomUUID(), name: name || '', icon: icon || '', value: 0 });
+    renderPatrimonioAssets();
+  }
+
+  function removePatrimonioAsset(idx) {
+    patrimonioAssets.splice(idx, 1);
+    renderPatrimonioAssets();
+  }
+
+  function savePatrimonioAsset(idx, field, val) {
+    if (!patrimonioAssets[idx]) return;
+    if (field === 'value') val = parseFloat(val) || 0;
+    patrimonioAssets[idx][field] = val;
+  }
+
   function showStep(step) {
     currentStep = step;
     for (let i = 1; i <= TOTAL_STEPS; i++) {
@@ -1216,7 +1265,7 @@ const SetupWizard = (() => {
     if (importSec) importSec.classList.toggle('hidden', step > 1);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (step === 2) { updateSalaryPreview(); buildIncomeChart(); }
-    if (step === 3) updateGoalHint();
+    if (step === 3) { updateGoalHint(); renderPatrimonioAssets(); }
     if (step === 5) renderCards();
     if (step === 7) { renderSubscriptionsList(); renderCategories(); updateCashFlowPreview(); }
   }
@@ -1238,15 +1287,14 @@ const SetupWizard = (() => {
       Store.profile.set({
         savingsGoal: Number(document.getElementById('setup-savings-goal').value) || 500000,
         targetYears: Number(document.getElementById('setup-target-years').value) || 15,
-        fgts: Number(document.getElementById('setup-fgts').value) || 0,
-        carValue: Number(document.getElementById('setup-car-value').value) || 0
+        fgts: Number(document.getElementById('setup-fgts').value) || 0
       });
       const pat = Store.data.getPatrimonio();
       Store.data.setPatrimonio({ ...pat,
         savings: Number(document.getElementById('setup-savings').value) || 0,
         investments: Number(document.getElementById('setup-investments').value) || 0,
         fgts: Number(document.getElementById('setup-fgts').value) || 0,
-        carValue: Number(document.getElementById('setup-car-value').value) || 0
+        assets: patrimonioAssets
       });
     }
     if (fromStep === 4) saveAccountsFromDOM();
@@ -1272,7 +1320,7 @@ const SetupWizard = (() => {
     const legacyFields = buildLegacyDeductFields();
     const firstPay = paymentSchedule[0];
     const adi = firstPay
-      ? (firstPay.isFixed ? firstPay.amount : (API.calcSalaryBreakdown({ ...Store.profile.get(), salary: gross, ...legacyFields }).netSalary * (firstPay.percent / 100)))
+      ? (firstPay.isFixed ? firstPay.amount : (gross * (firstPay.percent / 100)))
       : 0;
     Store.profile.set({
       paymentFrequency: freq,
@@ -1294,22 +1342,22 @@ const SetupWizard = (() => {
     const el = document.getElementById('setup-accounts-list');
     if (!el) return;
     el.innerHTML = accounts.map((a, i) =>
-      '<div class="setup-account-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">' +
+      '<div class="setup-account-row setup-item-card">' +
         '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">' +
-          '<input type="text" class="form-input setup-acct-name" value="' + App.esc(a.name||'') + '" placeholder="e.g. Nubank" style="flex:1;min-width:0;font-size:13px" />' +
-          '<select class="form-input setup-acct-type" style="width:110px;flex-shrink:0;font-size:13px">' +
+          '<input type="text" class="form-input setup-acct-name" value="' + App.esc(a.name||'') + '" placeholder="e.g. Nubank" style="flex:1;min-width:0" />' +
+          '<select class="form-input setup-acct-type" style="width:110px;flex-shrink:0">' +
             '<option value="checking"' + (a.type==='checking'?' selected':'') + '>Corrente</option>' +
             '<option value="savings"' + (a.type==='savings'?' selected':'') + '>Poupanca</option>' +
             '<option value="investment"' + (a.type==='investment'?' selected':'') + '>Investimento</option>' +
           '</select>' +
         '</div>' +
         '<div style="display:flex;gap:var(--space-sm);align-items:center">' +
-          '<input type="text" class="form-input setup-acct-bank" value="' + App.esc(a.bank||'') + '" placeholder="Banco" style="flex:1;min-width:0;font-size:13px" />' +
+          '<input type="text" class="form-input setup-acct-bank" value="' + App.esc(a.bank||'') + '" placeholder="Banco" style="flex:1;min-width:0" />' +
           '<div style="position:relative;width:120px;flex-shrink:0">' +
             '<span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px">R$</span>' +
-            '<input type="number" class="form-input setup-acct-balance" value="' + (a.balance||'') + '" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:28px;font-size:13px" />' +
+            '<input type="number" class="form-input setup-acct-balance" value="' + (a.balance||'') + '" placeholder="0" step="0.01" inputmode="decimal" style="padding-left:28px" />' +
           '</div>' +
-          (accounts.length > 1 ? '<button onclick="SetupWizard.removeAccount(' + i + ')" style="color:var(--red);background:none;border:none;font-size:20px;cursor:pointer;flex-shrink:0;padding:4px" aria-label="Remove">x</button>' : '') +
+          (accounts.length > 1 ? '<button onclick="SetupWizard.removeAccount(' + i + ')" class="setup-remove-btn" aria-label="Remove">x</button>' : '') +
         '</div>' +
         '<div style="margin-top:var(--space-sm);display:flex;align-items:center;gap:8px">' +
           '<input type="checkbox" class="setup-acct-primary" id="acct-p-' + i + '" ' + (a.isPrimary?'checked':'') + ' style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer" />' +
@@ -1354,30 +1402,30 @@ const SetupWizard = (() => {
       const acctOptions = savedAccounts.map(a =>
         '<option value="' + a.id + '"' + (c.paymentAccountId===a.id?' selected':'') + '>' + App.esc(a.name||a.bank||'Account') + '</option>'
       ).join('');
-      return '<div class="setup-card-row" style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-md)">' +
+      return '<div class="setup-card-row setup-item-card" style="margin-bottom:var(--space-md)">' +
         '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">' +
-          '<input type="text" class="form-input setup-card-name" value="' + App.esc(c.name||'') + '" placeholder="e.g. Nubank Ultravioleta" style="flex:1;min-width:0;font-size:13px" oninput="SetupWizard.onCardNameChange(' + i + ')" />' +
-          '<input type="text" class="form-input setup-card-brand" value="' + App.esc(c.brand||'') + '" placeholder="Visa/Mastercard/Elo" style="width:80px;flex-shrink:0;font-size:12px" />' +
+          '<input type="text" class="form-input setup-card-name" value="' + App.esc(c.name||'') + '" placeholder="e.g. Nubank Ultravioleta" style="flex:1;min-width:0" oninput="SetupWizard.onCardNameChange(' + i + ')" />' +
+          '<input type="text" class="form-input setup-card-brand" value="' + App.esc(c.brand||'') + '" placeholder="Visa/Mastercard/Elo" style="width:80px;flex-shrink:0" />' +
+          (cards.length > 1 ? '<button onclick="SetupWizard.removeCard(' + i + ')" class="setup-remove-btn" aria-label="Remove">x</button>' : '') +
         '</div>' +
         '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">' +
-          '<input type="text" class="form-input setup-card-last4" value="' + App.esc(c.lastFourDigits||'') + '" placeholder="*1234" maxlength="4" style="width:64px;flex-shrink:0;font-size:13px;text-align:center" inputmode="numeric" />' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">LIMITE</div><input type="number" class="form-input setup-card-limit" value="' + (c.limit||'') + '" placeholder="5000" inputmode="decimal" style="font-size:13px" oninput="SetupWizard.updateCardBalance(' + i + ')" /></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">DISPONIVEL</div><input type="number" class="form-input setup-card-available" value="' + (c.availableCredit||'') + '" placeholder="0" inputmode="decimal" style="font-size:13px" oninput="SetupWizard.updateCardBalance(' + i + ')" /></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">USADO</div><div class="form-input" id="card-used-' + i + '" style="font-size:13px;font-weight:700;color:' + usedColor + ';background:var(--bg-secondary);display:flex;align-items:center">' + (used > 0 ? Fmt.currency(used) : '—') + '</div></div>' +
+          '<input type="text" class="form-input setup-card-last4" value="' + App.esc(c.lastFourDigits||'') + '" placeholder="*1234" maxlength="4" style="width:64px;flex-shrink:0;text-align:center" inputmode="numeric" />' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">LIMITE</div><input type="number" class="form-input setup-card-limit" value="' + (c.limit||'') + '" placeholder="5000" inputmode="decimal" oninput="SetupWizard.updateCardBalance(' + i + ')" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">DISPONIVEL</div><input type="number" class="form-input setup-card-available" value="' + (c.availableCredit||'') + '" placeholder="0" inputmode="decimal" oninput="SetupWizard.updateCardBalance(' + i + ')" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">USADO</div><div class="form-input" id="card-used-' + i + '" style="font-weight:700;color:' + usedColor + ';background:var(--bg-secondary);display:flex;align-items:center">' + (used > 0 ? Fmt.currency(used) : '—') + '</div></div>' +
         '</div>' +
         '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">FECHA DIA</div><input type="number" class="form-input setup-card-closing" value="' + (c.closingDay||'') + '" placeholder="15" min="1" max="31" style="font-size:13px;text-align:center" inputmode="numeric" /></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">VENCE DIA</div><input type="number" class="form-input setup-card-due" value="' + (c.dueDay||'') + '" placeholder="25" min="1" max="31" style="font-size:13px;text-align:center" inputmode="numeric" /></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">JUROS %/mes</div><input type="number" class="form-input setup-card-interest" value="' + (c.interestRate||'') + '" placeholder="14.5" step="0.1" style="font-size:13px" inputmode="decimal" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">FECHA DIA</div><input type="number" class="form-input setup-card-closing" value="' + (c.closingDay||'') + '" placeholder="15" min="1" max="31" style="text-align:center" inputmode="numeric" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">VENCE DIA</div><input type="number" class="form-input setup-card-due" value="' + (c.dueDay||'') + '" placeholder="25" min="1" max="31" style="text-align:center" inputmode="numeric" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">JUROS %/mes</div><input type="number" class="form-input setup-card-interest" value="' + (c.interestRate||'') + '" placeholder="14.5" step="0.1" inputmode="decimal" /></div>' +
         '</div>' +
         '<div style="display:flex;gap:var(--space-sm);align-items:flex-end;margin-bottom:var(--space-md)">' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">ANUIDADE/ANO</div><input type="number" class="form-input setup-card-annual-fee" value="' + (c.annualFee||'') + '" placeholder="0" inputmode="decimal" style="font-size:13px" /></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">PAGA COM</div><select class="form-input setup-card-payment-account" style="font-size:13px"><option value="">Escolher conta...</option>' + acctOptions + '</select></div>' +
-          (cards.length > 1 ? '<button onclick="SetupWizard.removeCard(' + i + ')" style="color:var(--red);background:none;border:none;font-size:20px;cursor:pointer;flex-shrink:0;padding:4px 6px;margin-bottom:2px" aria-label="Remove">x</button>' : '') +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">ANUIDADE/ANO</div><input type="number" class="form-input setup-card-annual-fee" value="' + (c.annualFee||'') + '" placeholder="0" inputmode="decimal" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">PAGA COM</div><select class="form-input setup-card-payment-account"><option value="">Escolher conta...</option>' + acctOptions + '</select></div>' +
         '</div>' +
         '<div style="border-top:1px solid var(--border);padding-top:var(--space-sm)">' +
           '<div style="display:flex;gap:var(--space-sm);align-items:center;margin-bottom:var(--space-sm)">' +
-            '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">ULTIMO MES COM FATURA</div><input type="month" class="form-input setup-card-last-fatura" value="' + (c.lastFaturaMonth||'') + '" style="font-size:13px" onchange="SetupWizard.renderCardFaturas(' + i + ')" /></div>' +
+            '<div style="flex:1;min-width:0"><div class="setup-field-label">ULTIMO MES COM FATURA</div><input type="month" class="form-input setup-card-last-fatura" value="' + (c.lastFaturaMonth||'') + '" onchange="SetupWizard.renderCardFaturas(' + i + ')" /></div>' +
             '<div style="flex-shrink:0;font-size:12px;color:var(--text-muted);padding-top:16px">← abre a grade de faturas</div>' +
           '</div>' +
           '<div id="card-fatura-grid-' + i + '"></div>' +
@@ -1530,49 +1578,139 @@ const SetupWizard = (() => {
       el.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:13px;padding:var(--space-lg) 0;background:var(--bg-card);border:1px dashed var(--border);border-radius:var(--radius-md)">Nenhum emprestimo cadastrado.</div>';
       return;
     }
-    el.innerHTML = loans.map((l, i) => {
-      const total = (l.monthlyPayment || 0) * (l.remainingMonths || 0);
-      return '<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:var(--space-md);margin-bottom:var(--space-sm)">' +
+    el.innerHTML = loans.map((l, i) =>
+      '<div class="setup-item-card">' +
         '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm);align-items:center">' +
-          '<input type="text" class="form-input setup-loan-name" value="' + App.esc(l.name||'') + '" placeholder="Ex: Emprestimo pessoal, financiamento" style="flex:1;min-width:0;font-size:13px" />' +
-          '<button onclick="SetupWizard.removeLoan(' + i + ')" style="color:var(--red);background:none;border:none;font-size:20px;cursor:pointer;flex-shrink:0;padding:4px">x</button>' +
+          '<input type="text" class="form-input setup-loan-name" value="' + App.esc(l.name||'') + '" placeholder="Ex: Emprestimo pessoal, financiamento" style="flex:1;min-width:0" />' +
+          '<button onclick="SetupWizard.removeLoan(' + i + ')" class="setup-remove-btn" aria-label="Remove">x</button>' +
         '</div>' +
         '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">PARCELA MENSAL</div><input type="number" class="form-input setup-loan-payment" value="' + (l.monthlyPayment||'') + '" placeholder="500" inputmode="decimal" style="font-size:13px" /></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">PARCELAS RESTANTES</div><input type="number" class="form-input setup-loan-months" value="' + (l.remainingMonths||'') + '" placeholder="24" min="1" inputmode="numeric" style="font-size:13px" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">PARCELA PADRAO</div><input type="number" class="form-input setup-loan-payment" value="' + (l.defaultPayment||l.monthlyPayment||'') + '" placeholder="500" inputmode="decimal" /></div>' +
+          '<div style="width:80px;flex-shrink:0"><div class="setup-field-label">DIA</div><input type="number" class="form-input setup-loan-day" value="' + (l.paymentDay||'') + '" placeholder="10" min="1" max="31" inputmode="numeric" style="text-align:center" /></div>' +
         '</div>' +
-        '<div style="display:flex;gap:var(--space-sm)">' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">DIA PAGAMENTO</div><input type="number" class="form-input setup-loan-day" value="' + (l.paymentDay||'') + '" placeholder="10" min="1" max="31" inputmode="numeric" style="font-size:13px;text-align:center" /></div>' +
-          '<div style="flex:1;min-width:0"><div style="font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:3px">MES DE INICIO</div><input type="month" class="form-input setup-loan-start" value="' + (l.startMonth||'') + '" style="font-size:13px" /></div>' +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:var(--space-sm)">' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">MES INICIO</div><input type="month" class="form-input setup-loan-start" value="' + (l.startMonth||'') + '" onchange="SetupWizard.renderLoanPayments(' + i + ')" /></div>' +
+          '<div style="flex:1;min-width:0"><div class="setup-field-label">MES FIM</div><input type="month" class="form-input setup-loan-end" value="' + (l.endMonth||'') + '" onchange="SetupWizard.renderLoanPayments(' + i + ')" /></div>' +
         '</div>' +
-        (total > 0 ? '<div style="margin-top:8px;font-size:12px;color:var(--text-muted)">Total restante estimado: <strong style="color:var(--text-primary)">' + Fmt.currency(total) + '</strong></div>' : '') +
+        '<div style="display:flex;gap:var(--space-sm);margin-bottom:6px">' +
+          '<button class="btn btn-ghost btn-sm" onclick="SetupWizard.fillLoanDefault(' + i + ')" style="font-size:11px">Fill all with default</button>' +
+        '</div>' +
+        '<div id="loan-payment-grid-' + i + '"></div>' +
+        '<div id="loan-sum-' + i + '" style="font-size:12px;color:var(--text-muted);margin-top:4px"></div>' +
+      '</div>'
+    ).join('');
+    loans.forEach((l, i) => renderLoanPayments(i));
+  }
+
+  function getMonthsBetween(start, end) {
+    if (!start || !end) return [];
+    const months = [];
+    const d = new Date(start + '-02');
+    const e = new Date(end + '-02');
+    while (d <= e && months.length < 120) {
+      months.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+      d.setMonth(d.getMonth() + 1);
+    }
+    return months;
+  }
+
+  function renderLoanPayments(idx) {
+    saveLoansFromDOM();
+    const grid = document.getElementById('loan-payment-grid-' + idx);
+    if (!grid) return;
+    const l = loans[idx];
+    if (!l) return;
+    const months = getMonthsBetween(l.startMonth, l.endMonth);
+    if (months.length === 0) {
+      grid.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:4px 0">Set start and end months to see the payment grid.</div>';
+      updateLoanSum(idx);
+      return;
+    }
+    const cells = months.map(mo => {
+      const existing = loanPayments.find(p => p.loanId === l.id && p.month === mo);
+      const val = existing ? existing.amount : '';
+      return '<div class="setup-month-cell">' +
+        '<label>' + Fmt.monthYear(mo+'-01').split(' ')[0] + '</label>' +
+        '<input type="number" class="setup-loan-mo-input" data-loan-id="' + l.id + '" data-loan-idx="' + idx + '" data-month="' + mo + '" value="' + val + '" placeholder="' + (l.defaultPayment || 0) + '" inputmode="decimal" step="0.01" oninput="SetupWizard.saveLoanPayment(this)" />' +
       '</div>';
     }).join('');
+    grid.innerHTML = '<div class="setup-month-grid">' + cells + '</div>';
+    updateLoanSum(idx);
+  }
+
+  function saveLoanPayment(input) {
+    const loanId = input.dataset.loanId;
+    const month = input.dataset.month;
+    const val = input.value === '' ? null : parseFloat(input.value) || 0;
+    const existing = loanPayments.findIndex(p => p.loanId === loanId && p.month === month);
+    if (val === null || val === 0) {
+      if (existing >= 0) loanPayments.splice(existing, 1);
+    } else {
+      if (existing >= 0) loanPayments[existing].amount = val;
+      else loanPayments.push({ loanId, month, amount: val });
+    }
+    updateLoanSum(parseInt(input.dataset.loanIdx));
+  }
+
+  function fillLoanDefault(idx) {
+    saveLoansFromDOM();
+    const l = loans[idx];
+    if (!l || !l.defaultPayment) return;
+    const months = getMonthsBetween(l.startMonth, l.endMonth);
+    months.forEach(mo => {
+      const existing = loanPayments.findIndex(p => p.loanId === l.id && p.month === mo);
+      if (existing >= 0) {
+        if (!loanPayments[existing].amount) loanPayments[existing].amount = l.defaultPayment;
+      } else {
+        loanPayments.push({ loanId: l.id, month: mo, amount: l.defaultPayment });
+      }
+    });
+    renderLoanPayments(idx);
+  }
+
+  function updateLoanSum(idx) {
+    const sumEl = document.getElementById('loan-sum-' + idx);
+    if (!sumEl) return;
+    const l = loans[idx];
+    if (!l) return;
+    const months = getMonthsBetween(l.startMonth, l.endMonth);
+    let total = 0;
+    months.forEach(mo => {
+      const p = loanPayments.find(p => p.loanId === l.id && p.month === mo);
+      total += p ? p.amount : (l.defaultPayment || 0);
+    });
+    if (months.length > 0) {
+      sumEl.innerHTML = 'Total: <strong style="color:var(--text-primary)">' + Fmt.currency(total) + '</strong> em ' + months.length + ' parcelas';
+    } else {
+      sumEl.innerHTML = '';
+    }
   }
 
   function addLoan() {
     saveLoansFromDOM();
-    loans.push({ id: crypto.randomUUID(), name: '', monthlyPayment: 0, remainingMonths: 0, paymentDay: 10, startMonth: '' });
+    loans.push({ id: crypto.randomUUID(), name: '', defaultPayment: 0, paymentDay: 10, startMonth: '', endMonth: '' });
     renderLoans();
   }
 
   function removeLoan(idx) {
     saveLoansFromDOM();
-    loans.splice(idx, 1);
+    const removed = loans.splice(idx, 1)[0];
+    if (removed) loanPayments = loanPayments.filter(p => p.loanId !== removed.id);
     renderLoans();
   }
 
   function saveLoansFromDOM() {
-    const rows = document.querySelectorAll('#setup-loans-list > div[style]');
+    const rows = document.querySelectorAll('#setup-loans-list .setup-item-card');
+    if (!rows.length && loans.length === 0) return;
     if (!rows.length) { loans = []; return; }
     loans = Array.from(rows).map((row, i) => ({
-      ...(loans[i]?.id ? { id: loans[i].id } : { id: crypto.randomUUID() }),
+      id: loans[i]?.id || crypto.randomUUID(),
       name: row.querySelector('.setup-loan-name')?.value.trim() || '',
-      monthlyPayment: parseFloat(row.querySelector('.setup-loan-payment')?.value) || 0,
-      remainingMonths: parseInt(row.querySelector('.setup-loan-months')?.value) || 0,
+      defaultPayment: parseFloat(row.querySelector('.setup-loan-payment')?.value) || 0,
       paymentDay: parseInt(row.querySelector('.setup-loan-day')?.value) || 10,
-      startMonth: row.querySelector('.setup-loan-start')?.value || ''
-    })).filter(l => l.name || l.monthlyPayment > 0);
+      startMonth: row.querySelector('.setup-loan-start')?.value || '',
+      endMonth: row.querySelector('.setup-loan-end')?.value || ''
+    }));
   }
 
   function renderCategories() {
@@ -1731,8 +1869,22 @@ const SetupWizard = (() => {
       totalDebt += c.currentBalance || 0;
     }
 
-    const validLoans = loans.filter(l => l.name || l.monthlyPayment > 0);
+    const validLoans = loans.filter(l => l.name || l.defaultPayment > 0);
     for (const l of validLoans) await API.upsertLoan(l);
+    Store.data.setLoanPayments(loanPayments);
+
+    // Create benefit card accounts from benefits with amounts
+    for (const b of benefitsList.filter(b => b.amount > 0)) {
+      await API.upsertAccount({
+        id: 'benefit_' + b.id,
+        name: b.name + (b.provider ? ' (' + b.provider + ')' : ''),
+        bank: b.provider || 'Benefit',
+        type: 'benefit_card',
+        balance: b.amount,
+        reloadAmount: b.amount,
+        reloadDay: b.reloadDay || 1
+      });
+    }
 
     if (totalDebt > 0) Store.profile.set({ debtTotal: totalDebt });
     Store.cache.invalidateAll();
@@ -1749,9 +1901,10 @@ const SetupWizard = (() => {
     addBenefit, removeBenefit, saveBenefit,
     addVacationPlan, removeVacPlan, saveVacPlan,
     updateGoalHint,
+    addPatrimonioAsset, removePatrimonioAsset, savePatrimonioAsset,
     addAccount, removeAccount,
     addCard, removeCard, onCardNameChange, updateCardBalance, renderCardFaturas, updateFaturaSum,
-    addLoan, removeLoan,
+    addLoan, removeLoan, renderLoanPayments, saveLoanPayment, fillLoanDefault,
     addCustomCategory, removeCustomCategory, updateCashFlowPreview,
     addSubscription, cancelAddSubscription, confirmAddSubscription, removeSubscription,
     finish
